@@ -1,10 +1,12 @@
 DATASETS:
-  TRAIN: ("coco_2017_train_stuff_sem_seg",)
-  TEST: ('coco_2017_test_stuff_sem_seg', 'voc_sem_seg_val','pcontext_sem_seg_val','ade20k_sem_seg_val','pcontext_full_sem_seg_val','ade20k_full_sem_seg_val')
+  # TRAIN: ("coco_2017_train_stuff_sem_seg",)
+  # TEST: ('coco_2017_test_stuff_sem_seg', 'voc_sem_seg_val','pcontext_sem_seg_val','ade20k_sem_seg_val','pcontext_full_sem_seg_val','ade20k_full_sem_seg_val')
+  TRAIN: ("cub_train",)
+  TEST: ('cub_val',)
 SOLVER:
-  IMS_PER_BATCH: 32
+  IMS_PER_BATCH: 8
   BASE_LR: 0.0001
-  MAX_ITER: 60000
+  MAX_ITER: 20
   WARMUP_FACTOR: 1.0
   WARMUP_ITERS: 0
   WEIGHT_DECAY: 0.0001
