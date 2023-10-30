@@ -1,6 +1,6 @@
 # uncompyle6 version 3.9.0
 # Python bytecode version base 3.8.0 (3413)
-# Decompiled from: Python 3.8.10 (default, Mar  8 2023, 16:27:05) 
+# Decompiled from: Python 3.8.10 (default, Mar  8 2023, 16:27:05)
 # [GCC 9.4.0]
 # Embedded file name: /home/initial/workspace/smilab23/graduation_research/SAN/san/model/layers.py
 # Compiled at: 2023-10-26 09:42:22
@@ -153,6 +153,27 @@ class FlattenLayer(nn.Module):
     def forward(self, x):
         return x.reshape(x.size(0), -1)
 
+def normalize_per_batch(tensor):
+    # 正規化されたテンソルを保存するための新しいテンソルを作成
+    normalized_tensor = torch.zeros_like(tensor)
+
+    # バッチの次元（0次元目）でループ
+    for i in range(tensor.size(0)):
+        batch_min = tensor[i].min()
+        batch_max = tensor[i].max()
+        normalized_tensor[i] = (tensor[i] - batch_min) / (batch_max - batch_min)
+
+    return normalized_tensor
+
+class SimpleClassifier(nn.Module):
+    def __init__(self):
+        super(SimpleClassifier, self).__init__()
+        self.fc = nn.Linear(512, 200)
+
+    def forward(self, x):
+        x = self.fc(x)  # [8, 100, 200]
+        x = x.mean(dim=1, keepdim=True)  # [8, 1, 200]
+        return x
 
 class ModifiedModel(nn.Module):
 

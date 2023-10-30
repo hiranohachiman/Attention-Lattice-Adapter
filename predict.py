@@ -78,21 +78,21 @@ class Predictor(object):
         """
         cfg = setup(config_file)
         self.model = DefaultTrainer.build_model(cfg)
-        
+
         if model_path.startswith('huggingface:'):
             model_path = download_model(model_path)
-        
+
         print('Loading model from: ', model_path)
         DetectionCheckpointer(self.model, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
         print('Loaded model from: ', model_path)
         self.model.eval()
-        
+
         if torch.cuda.is_available():
             self.device = torch.device('cuda')
             self.model = self.model.cuda()
 
-    def predict(self, image_data_or_path: Union[Image.Image, str], vocabulary: List[str] = [], 
-                augment_vocabulary: Union[str, bool] = True, output_file: str = None, 
+    def predict(self, image_data_or_path: Union[Image.Image, str], vocabulary: List[str] = [],
+                augment_vocabulary: Union[str, bool] = True, output_file: str = None,
                 label: int=None, predict_class=False) -> Union[dict, None]:
         """
         Predict the segmentation result.
@@ -108,13 +108,13 @@ class Predictor(object):
             image_data = Image.open(image_data_or_path)
         else:
             image_data = image_data_or_path
-        
+
         w, h = image_data.size
         image_tensor = self._preprocess(image_data)
         vocabulary = list(set([v.lower().strip() for v in vocabulary]))
         vocabulary = [v for v in vocabulary if v != '']
         ori_vocabulary = vocabulary
-        
+
         if not predict_class:
             if isinstance(augment_vocabulary, str):
                 vocabulary = self.augment_vocabulary(vocabulary, augment_vocabulary)
@@ -123,7 +123,7 @@ class Predictor(object):
 
         if len(ori_vocabulary) == 0:
             ori_vocabulary = vocabulary
-        
+
         with torch.no_grad():
             if not vocabulary:
                 meta = MetadataCatalog.get('cub_val')
@@ -146,19 +146,19 @@ class Predictor(object):
                 }]
 
                 result = self.model(input_data)[0]
-        
+
         seg_map = self._postprocess(result['sem_seg'], ori_vocabulary)
         if output_file:
             self.visualize(image_data, seg_map, ori_vocabulary, output_file, mode='mask')
-            return (result['pred_class'], result['gt_class'])
-        
+            return result['pred_class']
+
         return {
             'image': image_data,
             'sem_seg': seg_map,
             'vocabulary': ori_vocabulary
         }
 
-    def visualize(self, image: Image.Image, sem_seg: np.ndarray, vocabulary: List[str], 
+    def visualize(self, image: Image.Image, sem_seg: np.ndarray, vocabulary: List[str],
                   output_file: str = None, mode: str = 'overlay') -> Union[Image.Image, None]:
         """
         Visualize the segmentation result.
@@ -185,7 +185,7 @@ class Predictor(object):
             labels, areas = np.unique(sem_seg, return_counts=True)
             sorted_idxs = np.argsort(-areas).tolist()
             labels = labels[sorted_idxs]
-            
+
             for label in filter(lambda l: l < len(metadata.stuff_classes), labels):
                 v[sem_seg == label] = metadata.stuff_colors[label]
             v = Image.fromarray(v)
@@ -208,7 +208,7 @@ class Predictor(object):
             return vocabulary + [c for c in default_voc if c not in vocabulary]
         elif aug_set == 'COCO-stuff':
             return vocabulary + [c for c in stuff_voc if c not in vocabulary]
-        
+
         return vocabulary
 
     def _preprocess(self, image: Image.Image) -> torch.Tensor:
@@ -221,12 +221,12 @@ class Predictor(object):
         """
         image = image.convert('RGB')
         w, h = image.size
-        
+
         if w < h:
             image = image.resize((640, int(h * 640 / w)))
         else:
             image = image.resize((int(w * 640 / h), 640))
-        
+
         image = torch.from_numpy(np.asarray(image)).float()
         image = image.permute(2, 0, 1)
         return image
@@ -243,7 +243,7 @@ class Predictor(object):
         result = result.argmax(dim=0).cpu().numpy()
         if not ori_vocabulary:
             return result
-        
+
         result[result >= len(ori_vocabulary)] = len(ori_vocabulary)
         return result
 

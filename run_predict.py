@@ -22,19 +22,27 @@ def get_image_data_details(line):
 
 
 def predict_with_bird(args):
+    sample = 0
+    correct = 0
     predictor = Predictor(config_file=config_file, model_path=args.model_path)
     with open(label_file) as (f):
         lines = f.readlines()
         for line in tqdm(lines):
             img_path, label, output_file = get_image_data_details(line)
-            predictor.predict(
+            pred_class = predictor.predict(
                 img_path,
                 ["bird"],
                 False,
                 output_file=output_file,
                 label=label,
             )
-    
+            assert type(pred_class) == int
+            if pred_class == int(label):
+                correct += 1
+            sample += 1
+        print(f"accuracy: {correct/sample}")
+
+
 def main(args):
     predict_with_bird(args)
 

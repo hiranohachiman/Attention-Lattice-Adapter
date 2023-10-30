@@ -9,22 +9,22 @@ from detectron2.utils.memory import retry_if_cuda_oom
 from torch import nn
 from torch.nn import functional as F
 
-from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel
+from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier
 from .clip_utils import FeatureExtractor, LearnableBgOvClassifier, PredefinedOvClassifier, RecWithAttnbiasHead, get_predefined_templates
 from .criterion import SetCriterion, cross_entropy_loss
 from .matcher import HungarianMatcher
 from .side_adapter import build_side_adapter_network
 from .visualize import save_overlay_image_with_matplotlib, save_side_by_side_image, save_image_to_directory
-
+from .attention import TransformerDecoder
 
 @META_ARCH_REGISTRY.register()
 class SAN(nn.Module):
 
     @configurable
-    def __init__(self, *, clip_visual_extractor, clip_rec_head, side_adapter_network, 
-                 ov_classifier, criterion, size_divisibility, asymetric_input=True, 
-                 clip_resolution=0.5, pixel_mean=[0.48145466, 0.4578275, 0.40821073], 
-                 pixel_std=[0.26862954, 0.26130258, 0.27577711], 
+    def __init__(self, *, clip_visual_extractor, clip_rec_head, side_adapter_network,
+                 ov_classifier, criterion, size_divisibility, asymetric_input=True,
+                 clip_resolution=0.5, pixel_mean=[0.48145466, 0.4578275, 0.40821073],
+                 pixel_std=[0.26862954, 0.26130258, 0.27577711],
                  sem_seg_postprocess_before_inference=False):
         super().__init__()
         self.asymetric_input = asymetric_input
@@ -37,11 +37,17 @@ class SAN(nn.Module):
         self.clip_rec_head = clip_rec_head
         self.ov_classifier = ov_classifier
         self.linear = nn.Linear(100, 1)
+        self.linear2 = nn.Linear(768, 4096)
+        self.linear3 = nn.Linear(4096, 1024)
+        self.linear4 = nn.Linear(1024, 200)
         self.register_buffer('pixel_mean', torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer('pixel_std', torch.Tensor(pixel_std).view(-1, 1, 1), False)
         self.conv1 = ConvReducer(100, 1)
         self.simplecnn = ClassificationCNN()
         self.modi = ModifiedModel()
+        self.mask_embs_classifier = SimpleClassifier()
+        self.attention = nn.MultiheadAttention(512, 8)
+        self.transformer = TransformerDecoder()
 
     @classmethod
     def from_config(cls, cfg):
@@ -53,8 +59,8 @@ class SAN(nn.Module):
                                    cost_mask=mask_weight,
                                    cost_dice=dice_weight,
                                    num_points=cfg.MODEL.SAN.TRAIN_NUM_POINTS)
-        weight_dict = {'loss_ce': class_weight, 
-                       'loss_mask': mask_weight, 
+        weight_dict = {'loss_ce': class_weight,
+                       'loss_mask': mask_weight,
                        'loss_dice': dice_weight}
         aux_weight_dict = {}
         for i in range(len(cfg.MODEL.SIDE_ADAPTER.DEEP_SUPERVISION_IDXS) - 1):
@@ -87,16 +93,16 @@ class SAN(nn.Module):
             pixel_mean, pixel_std = preprocess.transforms[-1].mean, preprocess.transforms[-1].std
             pixel_mean = [255.0 * x for x in pixel_mean]
             pixel_std = [255.0 * x for x in pixel_std]
-            return {'clip_visual_extractor': clip_visual_extractor, 
-                    'clip_rec_head': clip_rec_head, 
-                    'side_adapter_network': build_side_adapter_network(cfg, clip_visual_extractor.output_shapes), 
-                    'ov_classifier': ov_classifier, 
-                    'criterion': criterion, 
-                    'size_divisibility': cfg.MODEL.SAN.SIZE_DIVISIBILITY, 
-                    'asymetric_input': cfg.MODEL.SAN.ASYMETRIC_INPUT, 
-                    'clip_resolution': cfg.MODEL.SAN.CLIP_RESOLUTION, 
-                    'sem_seg_postprocess_before_inference': cfg.MODEL.SAN.SEM_SEG_POSTPROCESS_BEFORE_INFERENCE, 
-                    'pixel_mean': pixel_mean, 
+            return {'clip_visual_extractor': clip_visual_extractor,
+                    'clip_rec_head': clip_rec_head,
+                    'side_adapter_network': build_side_adapter_network(cfg, clip_visual_extractor.output_shapes),
+                    'ov_classifier': ov_classifier,
+                    'criterion': criterion,
+                    'size_divisibility': cfg.MODEL.SAN.SIZE_DIVISIBILITY,
+                    'asymetric_input': cfg.MODEL.SAN.ASYMETRIC_INPUT,
+                    'clip_resolution': cfg.MODEL.SAN.CLIP_RESOLUTION,
+                    'sem_seg_postprocess_before_inference': cfg.MODEL.SAN.SEM_SEG_POSTPROCESS_BEFORE_INFERENCE,
+                    'pixel_mean': pixel_mean,
                     'pixel_std': pixel_std}
 
     def forward(self, batched_inputs):
@@ -108,14 +114,14 @@ class SAN(nn.Module):
             dataset_names = [x['meta']['dataset_name'] for x in batched_inputs]
             assert len(list(set(dataset_names))) == 1, 'All images in a batch must be from the same dataset.'
             ov_classifier_weight = self.ov_classifier.logit_scale.exp() * \
-                                   self.ov_classifier.get_classifier_by_dataset_name(dataset_names[0])
+                                   self.ov_classifier.get_classifier_by_dataset_name(dataset_names[0]) # [201, 512]
 
         if self.training:
             labels = [x['label'].to(self.device) for x in batched_inputs]
             labels = torch.stack(labels)
-        else:
-            labels.append(torch.tensor(batched_inputs[0]['label']).to(self.device))
-            labels = torch.stack(labels)
+        # else:
+        #     labels.append(torch.tensor(batched_inputs[0]['label']).to(self.device))
+        #     labels = torch.stack(labels)
 
         images = [x['image'].to(self.device) for x in batched_inputs]
         for_saving_images = ImageList.from_tensors(images, self.size_divisibility)
@@ -128,21 +134,28 @@ class SAN(nn.Module):
         if self.asymetric_input:
             clip_input = F.interpolate(clip_input, scale_factor=self.clip_resolution, mode='bilinear')
         clip_image_features = self.clip_visual_extractor(clip_input)
+        # [8, 768, 20, 20], [1, 8, 768]
         mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
         reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
         reshaped_mask_preds = self.conv1(reshaped_mask_preds)
         reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
-        clip_image_features[9] += reshaped_mask_preds
+        # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
         mask_preds_for_output = self.conv1(mask_preds[-1])
-        save_side_by_side_image(mask_preds_for_output[0], for_saving_images[0])
+        # save_side_by_side_image(mask_preds_for_output[0], for_saving_images[0])
 
         mask_embs = [self.clip_rec_head(clip_image_features, attn_bias, normalize=True) for attn_bias in attn_biases]
-        mask_logits = [torch.einsum('bqc,nc->bqn', mask_emb, ov_classifier_weight) for mask_emb in mask_embs]
-        logits = mask_logits[-1][:, :, :200]
-        logits = torch.mean(logits, dim=1)
-
+        # print(mask_embs[-1].shape) # [8, 100, 512]
+        # logits = self.mask_embs_classifier(mask_embs[-1]).squeeze(1)
+        repeated_ov_classifier_weight = ov_classifier_weight.unsqueeze(0).repeat(8, 1, 1)
+        mask_embs = [self.transformer(mask_emb, repeated_ov_classifier_weight[:, :200, :]) for mask_emb in mask_embs]
+        mask_logits = [torch.einsum('bqc,nc->bqn', mask_emb, ov_classifier_weight) for mask_emb in mask_embs] # [8, 100, 201]
+        # logits = mask_logits[-1][:, :, :200]
+        # logits, _ = torch.max(logits, dim=1)
+        logits = self.linear4(self.linear3(self.linear2(clip_image_features["9_cls_token"].squeeze(0))))
         if self.training:
             loss = cross_entropy_loss(logits, labels)
+            if loss == None:
+                print(logits, labels)
             mask_preds = F.interpolate(mask_preds[-1],
                                        size=(images.tensor.shape[-2], images.tensor.shape[-1]),
                                        mode='bilinear',
@@ -162,7 +175,7 @@ class SAN(nn.Module):
                                    mode='bilinear',
                                    align_corners=False)
         processed_results = []
-        for mask_cls_result, mask_pred_result, input_per_image, image_size, logit, label in zip(mask_logits, mask_preds, batched_inputs, images.image_sizes, logits, labels):
+        for mask_cls_result, mask_pred_result, input_per_image, image_size, logit in zip(mask_logits, mask_preds, batched_inputs, images.image_sizes, logits):
             height = input_per_image.get('height', image_size[0])
             width = input_per_image.get('width', image_size[1])
             processed_results.append({})
@@ -173,8 +186,8 @@ class SAN(nn.Module):
             if not self.sem_seg_postprocess_before_inference:
                 r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
             processed_results[-1]['sem_seg'] = r
-            processed_results[-1]['pred_class'] = logit.argmax()
-            processed_results[-1]['gt_class'] = label
+            processed_results[-1]['pred_class'] = int(logit.argmax())
+            # processed_results[-1]['gt_class'] = label
         return processed_results
 
     def prepare_targets(self, targets, images):
