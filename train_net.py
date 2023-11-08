@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Set
 
 import detectron2.utils.comm as comm
 import torch
+from torch.nn import init
+import torch.nn as nn
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.parallel")
 from detectron2.checkpoint import DetectionCheckpointer
@@ -46,6 +48,19 @@ from san import (
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
 
+
+def weight_init_kaiming(m):
+    class_names = m.__class__.__name__
+    if class_names.find('Conv') != -1:
+        init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+    elif class_names.find('Linear') != -1:
+        init.kaiming_normal_(m.weight.data)
+        #init.constant_(m.bias.data, 0.0)
+
+def apply_weight_init(m):
+    # モジュールが nn.Linear のインスタンスであるかどうかをチェックします。
+    if isinstance(m, nn.Linear):
+        weight_init_kaiming(m)
 
 class Trainer(DefaultTrainer):
     def build_writers(self):
@@ -108,6 +123,10 @@ class Trainer(DefaultTrainer):
 
     @classmethod
     def build_optimizer(cls, cfg, model):
+        # model.apply(apply_weight_init)
+        # # print("!!!!!!!!!!!!!!!!!!!")
+        # # print(model)
+        # # print("!!!!!!!!!!!!!!!!!!!!")
         weight_decay_norm = cfg.SOLVER.WEIGHT_DECAY_NORM
         weight_decay_embed_group = cfg.SOLVER.WEIGHT_DECAY_EMBED_GROUP
         weight_decay_embed = cfg.SOLVER.WEIGHT_DECAY_EMBED
@@ -215,6 +234,7 @@ class Trainer(DefaultTrainer):
             numalign="center",
         )
         logger = logging.getLogger("san")
+        logger.setLevel(logging.ERROR)
         logger.info("Optimizer Info:\n{}\n".format(table))
         return optimizer
 

@@ -114,7 +114,7 @@ class RecWithAttnbiasHead(nn.Module):
         self,
         visual_encoder: VisionTransformer,
         first_layer_idx: int = 0,
-        frozen_exclude: List[str] = [],
+        frozen_exclude: List[str] = [], # []
         sos_token_format: str = "cls_token",
         sos_token_num: int = 1, #100
         cross_attn: bool = True, #False

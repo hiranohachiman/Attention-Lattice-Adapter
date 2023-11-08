@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 import math
 class TransformerDecoder(nn.Module):
-    def __init__(self,  num_hidden_layers=5):
+    def __init__(self, output_dim, num_hidden_layers=5):
         super().__init__()
         self.layer = nn.ModuleList(
             [DecoderLayer() for _ in range(num_hidden_layers)]
         )
-
+        self.linear = nn.Linear(512, output_dim)
     def forward(
         self,
         q: torch.Tensor,
@@ -16,7 +16,7 @@ class TransformerDecoder(nn.Module):
 
         for layer in self.layer:
             hidden_states = layer(q, kv)
-
+        hidden_states = self.linear(hidden_states)
         return hidden_states
 
 class DecoderLayer(nn.Module):

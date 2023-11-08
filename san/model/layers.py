@@ -156,12 +156,12 @@ class FlattenLayer(nn.Module):
 def normalize_per_batch(tensor):
     # 正規化されたテンソルを保存するための新しいテンソルを作成
     normalized_tensor = torch.zeros_like(tensor)
-
+    epsilon = 10e-8
     # バッチの次元（0次元目）でループ
     for i in range(tensor.size(0)):
         batch_min = tensor[i].min()
         batch_max = tensor[i].max()
-        normalized_tensor[i] = (tensor[i] - batch_min) / (batch_max - batch_min)
+        normalized_tensor[i] = (tensor[i] - batch_min) / (batch_max - batch_min + epsilon)
 
     return normalized_tensor
 
@@ -186,3 +186,63 @@ class ModifiedModel(nn.Module):
         x = self.flatten(x)
         x = self.fc(x)
         return x.view(8, 200)
+
+
+
+class LinearLayer(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super(LinearLayer, self).__init__()
+        self.linear1 = nn.Linear(in_dim, out_dim)
+        self.linear2 = nn.Linear(out_dim, out_dim)
+        self.linear3 = nn.Linear(out_dim, out_dim)
+        self.linear4 = nn.Linear(out_dim, out_dim)
+        self.linear5 = nn.Linear(out_dim, out_dim)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.linear1(x)
+        # x = self.relu(x)
+        x = self.linear2(x)
+        # x = self.relu(x)
+        x = self.linear3(x)
+        # x = self.relu(x)
+        x = self.linear4(x)
+        # x = self.relu(x)
+        x = self.linear5(x)
+        return x
+
+class ABNClassifier(nn.Module):
+    def __init__(self):
+        super(ABNClassifier, self).__init__()
+        self.bn = nn.BatchNorm2d(100)
+        self.conv1 = nn.Conv2d(100, 16, 1)  # 1x1 Convolution, 入力チャンネル: 100, 出力チャンネル: 16
+        self.relu = nn.ReLU()
+        self.conv2 = nn.Conv2d(16, 200, 1)  # 1x1 Convolution, 入力チャンネル: 16, 出力チャンネル: 200
+
+    def forward(self, x):
+        x = self.bn(x)
+        x = self.conv1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = F.adaptive_avg_pool2d(x, (1, 1))  # Global Average Pooling (GAP)
+        x = torch.flatten(x, 1)  # バッチサイズとチャンネル数以外の次元を削除
+        return x
+
+class ClipFeatureClassifier(nn.Module):
+    def __init__(self, num_classes=200):
+        super(ClipFeatureClassifier, self).__init__()
+        self.conv1 = nn.Conv2d(768, 256, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        # 二つのプーリング層を通過した後のサイズを計算
+        self.flattened_size = 128 * 5 * 5
+        self.fc1 = nn.Linear(self.flattened_size, 1024)
+        self.fc2 = nn.Linear(1024, num_classes)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = torch.flatten(x, 1)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x

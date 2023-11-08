@@ -8,8 +8,10 @@ from detectron2.structures import ImageList
 from detectron2.utils.memory import retry_if_cuda_oom
 from torch import nn
 from torch.nn import functional as F
+import numpy as np
+import wandb
 
-from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier
+from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier
 from .clip_utils import FeatureExtractor, LearnableBgOvClassifier, PredefinedOvClassifier, RecWithAttnbiasHead, get_predefined_templates
 from .criterion import SetCriterion, cross_entropy_loss
 from .matcher import HungarianMatcher
@@ -43,11 +45,16 @@ class SAN(nn.Module):
         self.register_buffer('pixel_mean', torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer('pixel_std', torch.Tensor(pixel_std).view(-1, 1, 1), False)
         self.conv1 = ConvReducer(100, 1)
+        self.conv2 = ConvReducer(100, 1)
         self.simplecnn = ClassificationCNN()
         self.modi = ModifiedModel()
         self.mask_embs_classifier = SimpleClassifier()
-        self.attention = nn.MultiheadAttention(512, 8)
-        self.transformer = TransformerDecoder()
+        self.attention = nn.MultiheadAttention(768, 8)
+        self.transformer = TransformerDecoder(200)
+        self.linear5 = LinearLayer(200, 200)
+        self.linear6 = LinearLayer(512, 200)
+        self.abnclassifier = ABNClassifier()
+        self.clipfeatureclassifier = ClipFeatureClassifier()
 
     @classmethod
     def from_config(cls, cfg):
@@ -122,14 +129,13 @@ class SAN(nn.Module):
         # else:
         #     labels.append(torch.tensor(batched_inputs[0]['label']).to(self.device))
         #     labels = torch.stack(labels)
-
         images = [x['image'].to(self.device) for x in batched_inputs]
         for_saving_images = ImageList.from_tensors(images, self.size_divisibility)
         for_saving_images = for_saving_images.tensor
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
         images = ImageList.from_tensors(images, self.size_divisibility)
         clip_input = images.tensor
-        save_image_to_directory(for_saving_images[0])
+        # save_image_to_directory(for_saving_images[0])
 
         if self.asymetric_input:
             clip_input = F.interpolate(clip_input, scale_factor=self.clip_resolution, mode='bilinear')
@@ -139,33 +145,44 @@ class SAN(nn.Module):
         reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
         reshaped_mask_preds = self.conv1(reshaped_mask_preds)
         reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
-        # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
+        clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
+        logits = self.clipfeatureclassifier(clip_image_features[9])
+        logits = self.linear5(logits)
+
+        # clip_image_features[9] += normalize_per_batch(reshaped_mask_preds)
         mask_preds_for_output = self.conv1(mask_preds[-1])
-        # save_side_by_side_image(mask_preds_for_output[0], for_saving_images[0])
+        save_side_by_side_image(mask_preds_for_output[0], for_saving_images[0])
 
         mask_embs = [self.clip_rec_head(clip_image_features, attn_bias, normalize=True) for attn_bias in attn_biases]
         # print(mask_embs[-1].shape) # [8, 100, 512]
+        # logits = torch.mean(mask_embs[-1], dim=1).squeeze(1)
+        # logits = self.linear6(logits)
         # logits = self.mask_embs_classifier(mask_embs[-1]).squeeze(1)
         repeated_ov_classifier_weight = ov_classifier_weight.unsqueeze(0).repeat(8, 1, 1)
-        mask_embs = [self.transformer(mask_emb, repeated_ov_classifier_weight[:, :200, :]) for mask_emb in mask_embs]
+        # mask_embs = [self.transformer(mask_emb, repeated_ov_classifier_weight[:, :200, :]) for mask_emb in mask_embs]
         mask_logits = [torch.einsum('bqc,nc->bqn', mask_emb, ov_classifier_weight) for mask_emb in mask_embs] # [8, 100, 201]
         # logits = mask_logits[-1][:, :, :200]
-        # logits, _ = torch.max(logits, dim=1)
-        logits = self.linear4(self.linear3(self.linear2(clip_image_features["9_cls_token"].squeeze(0))))
+        # logits = torch.mean(logits, dim=1)
+        # logits = self.linear5(logits)
+        # logits = self.linear4(self.linear3(self.linear2(clip_image_features["9_cls_token"].squeeze(0))))
+        # logits, _ = self.attention(clip_image_features["9_cls_token"], clip_image_features["9_cls_token"],clip_image_features["9_cls_token"])
+        # logits = self.linear4(self.linear3(self.linear2(logits.squeeze(0))))
         if self.training:
             loss = cross_entropy_loss(logits, labels)
-            if loss == None:
+            if torch.isnan(loss).any():
                 print(logits, labels)
-            mask_preds = F.interpolate(mask_preds[-1],
-                                       size=(images.tensor.shape[-2], images.tensor.shape[-1]),
-                                       mode='bilinear',
-                                       align_corners=False)
-            num_input_channels = mask_preds.size(1)
-            num_classes = 200
-            attn_classifier = ClassifierHead(num_input_channels, num_classes).cuda()
-            attn_class_preds = attn_classifier(mask_preds)
+            attn_class_preds = self.abnclassifier(mask_preds[-1])
+            # mask_preds = F.interpolate(mask_preds[-1],
+            #                            size=(images.tensor.shape[-2], images.tensor.shape[-1]),
+            #                            mode='bilinear',
+            #                            align_corners=False)
+            # num_input_channels = mask_preds.size(1)
+            # num_classes = 200
+            # attn_classifier = ClassifierHead(num_input_channels, num_classes).cuda()
+            # attn_class_preds = attn_classifier(mask_preds)
             attn_loss = cross_entropy_loss(attn_class_preds, labels)
             losses = {'normal_loss': loss, 'attn_loss': attn_loss}
+            wandb.log(losses)
             return losses
 
         mask_preds = mask_preds[-1]
@@ -188,6 +205,8 @@ class SAN(nn.Module):
             processed_results[-1]['sem_seg'] = r
             processed_results[-1]['pred_class'] = int(logit.argmax())
             # processed_results[-1]['gt_class'] = label
+            processed_results[-1]['attn_map'] = mask_preds_for_output
+            processed_results[-1]['logit'] = logit.unsqueeze(0)
         return processed_results
 
     def prepare_targets(self, targets, images):

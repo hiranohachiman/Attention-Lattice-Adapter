@@ -24,9 +24,11 @@ from detectron2.utils.visualizer import Visualizer, random_color
 from huggingface_hub import hf_hub_download
 from PIL import Image
 from torchsummary import summary
+from torchvision.transforms import functional as TF
 
 from san import add_san_config
-from san.data.datasets.register_coco_stuff_164k import COCO_CATEGORIES
+from san.data.datasets.register_cub import CLASS_NAMES
+from san.model.visualize import attn2binary_mask, save_img_data, save_attn_map
 
 model_cfg = {
     "san_vit_b_16": {
@@ -125,7 +127,7 @@ class Predictor(object):
             ori_vocabulary = vocabulary
 
         with torch.no_grad():
-            if not vocabulary:
+            if predict_class:
                 meta = MetadataCatalog.get('cub_val')
                 input_data = [{
                     'image': image_tensor,
@@ -149,13 +151,19 @@ class Predictor(object):
 
         seg_map = self._postprocess(result['sem_seg'], ori_vocabulary)
         if output_file:
-            self.visualize(image_data, seg_map, ori_vocabulary, output_file, mode='mask')
+            if predict_class:
+                attn2binary_mask(result['attn_map'][0], w, h, output_file)
+                save_attn_map(result['attn_map'][0], w, h, output_file.replace("pred_class", "attn_map"))
+            else:
+                self.visualize(image_data, seg_map, ori_vocabulary, output_file, mode='mask')
+            # self.visualize(image_data, seg_map, ori_vocabulary, output_file, mode='overlay')
             return result['pred_class']
 
         return {
             'image': image_data,
             'sem_seg': seg_map,
-            'vocabulary': ori_vocabulary
+            'vocabulary': ori_vocabulary,
+            'attn_map': result['attn_map'][0]
         }
 
     def visualize(self, image: Image.Image, sem_seg: np.ndarray, vocabulary: List[str],
@@ -197,14 +205,14 @@ class Predictor(object):
         v.save(output_file)
 
     def _merge_vocabulary(self, vocabulary: List[str]) -> List[str]:
-        default_voc = [c['name'] for c in COCO_CATEGORIES]
+        default_voc = [c for c in CLASS_NAMES]
         return vocabulary + [c for c in default_voc if c not in vocabulary]
 
-    def augment_vocabulary(self, vocabulary: List[str], aug_set: str = 'COCO-all') -> List[str]:
-        default_voc = [c['name'] for c in COCO_CATEGORIES]
-        stuff_voc = [c['name'] for c in COCO_CATEGORIES if 'isthing' not in c and c['isthing'] == 0]
+    def augment_vocabulary(self, vocabulary: List[str], aug_set: str = 'cub') -> List[str]:
+        default_voc = [c for c in CLASS_NAMES]
+        # stuff_voc = [c['name'] for c in CLASS_NAMES if 'isthing' not in c and c['isthing'] == 0]
 
-        if aug_set == 'COCO-all':
+        if aug_set == 'cub':
             return vocabulary + [c for c in default_voc if c not in vocabulary]
         elif aug_set == 'COCO-stuff':
             return vocabulary + [c for c in stuff_voc if c not in vocabulary]
@@ -222,11 +230,12 @@ class Predictor(object):
         image = image.convert('RGB')
         w, h = image.size
 
-        if w < h:
-            image = image.resize((640, int(h * 640 / w)))
-        else:
-            image = image.resize((int(w * 640 / h), 640))
+        # if w < h:
+        #     image = image.resize((640, int(h * 640 / w)))
+        # else:
+        #     image = image.resize((int(w * 640 / h), 640))
 
+        image = image.resize((640, 640))
         image = torch.from_numpy(np.asarray(image)).float()
         image = image.permute(2, 0, 1)
         return image
