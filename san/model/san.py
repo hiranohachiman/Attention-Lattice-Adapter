@@ -10,6 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 import numpy as np
 import wandb
+import math
 
 from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier
 from .clip_utils import FeatureExtractor, LearnableBgOvClassifier, PredefinedOvClassifier, RecWithAttnbiasHead, get_predefined_templates
@@ -145,7 +146,8 @@ class SAN(nn.Module):
         reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
         reshaped_mask_preds = self.conv1(reshaped_mask_preds)
         reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
-        clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
+        # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
+        clip_image_features[9] *= reshaped_mask_preds
         logits = self.clipfeatureclassifier(clip_image_features[9])
         logits = self.linear5(logits)
 
@@ -181,6 +183,9 @@ class SAN(nn.Module):
             # attn_classifier = ClassifierHead(num_input_channels, num_classes).cuda()
             # attn_class_preds = attn_classifier(mask_preds)
             attn_loss = cross_entropy_loss(attn_class_preds, labels)
+            if math.isnan(loss):
+                loss = 0
+
             losses = {'normal_loss': loss, 'attn_loss': attn_loss}
             wandb.log(losses)
             return losses

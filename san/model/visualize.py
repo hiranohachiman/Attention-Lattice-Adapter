@@ -57,11 +57,12 @@ def save_image_to_directory(tensor, dir_path='output/test/tmp', file_name_patter
 
     return save_path
 
-def attn2binary_mask(attn_map, w, h, output_file, threshold=0.75):
+def attn2binary_mask(attn_map, w, h, output_file, threshold="mean"):
     # アテンションマップを正規化
     tensor_np = attn_map.cpu().detach().numpy()
     tensor_np = (tensor_np - tensor_np.min()) / (tensor_np.max() - tensor_np.min())
-
+    if threshold == "mean":
+        threshold = tensor_np.mean()
     # アテンションマップをimg_dataのサイズにリサイズ
     attn_map_resized = torch.tensor(tensor_np)
     attn_map_resized = TF.resize(attn_map_resized, (h, w))

@@ -4,7 +4,7 @@ import glob
 from tqdm import tqdm
 from san.data.datasets.register_cub import CLASS_NAMES
 
-label_file = "datasets/CUB/id_score_sample.txt"
+label_file = "datasets/CUB/test_label.txt"
 config_file = "configs/san_clip_vit_res4_coco.yaml"
 
 def get_img_path(img_dir):

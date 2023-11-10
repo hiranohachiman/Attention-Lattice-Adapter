@@ -102,7 +102,6 @@ def get_image_data_details(line, args):
     label = int(line.split(',')[1].replace('\n', '').replace(' ', ''))
     output_file = os.path.join(args.output_dir, img_path.replace("test/","",).replace("/","_").replace(" ",""))
     attn_path = os.path.join(get_attn_dir(args), img_path.replace("test/","",).replace("/","_").replace(" ",""))
-    attn_path = attn_path + ".png"
     img_path = os.path.join('datasets/CUB/', img_path.replace(' ', ''))
 
     return (img_path, label, attn_path, output_file)
