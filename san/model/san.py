@@ -86,6 +86,16 @@ class SAN(nn.Module):
                                      importance_sample_ratio=cfg.MODEL.SAN.IMPORTANCE_SAMPLE_RATIO)
             model, _, preprocess = open_clip.create_model_and_transforms(cfg.MODEL.SAN.CLIP_MODEL_NAME,
                                                                          pretrained=cfg.MODEL.SAN.CLIP_PRETRAINED_NAME)
+            # def init_weights(m):
+            #     if isinstance(m, nn.Conv2d):
+            #         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            #     elif isinstance(m, nn.BatchNorm2d):
+            #         nn.init.constant_(m.weight, 1)
+            #         nn.init.constant_(m.bias, 0)
+            #     elif isinstance(m, nn.Linear):
+            #         nn.init.normal_(m.weight, 0, 0.01)
+            #         nn.init.constant_(m.bias, 0)
+            # model.apply(init_weights)
             ov_classifier = LearnableBgOvClassifier(model,
                                                     templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
             clip_visual_extractor = FeatureExtractor(model.visual,
@@ -187,6 +197,8 @@ class SAN(nn.Module):
                 loss = 0
 
             losses = {'normal_loss': loss, 'attn_loss': attn_loss}
+            # losses = {'attn_loss': attn_loss}
+
             wandb.log(losses)
             return losses
 

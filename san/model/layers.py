@@ -192,11 +192,11 @@ class ModifiedModel(nn.Module):
 class LinearLayer(nn.Module):
     def __init__(self, in_dim, out_dim):
         super(LinearLayer, self).__init__()
-        self.linear1 = nn.Linear(in_dim, out_dim)
-        self.linear2 = nn.Linear(out_dim, out_dim)
-        self.linear3 = nn.Linear(out_dim, out_dim)
-        self.linear4 = nn.Linear(out_dim, out_dim)
-        self.linear5 = nn.Linear(out_dim, out_dim)
+        self.linear1 = nn.Linear(in_dim, 512)
+        self.linear2 = nn.Linear(512, 1024)
+        self.linear3 = nn.Linear(1024, 4096)
+        self.linear4 = nn.Linear(4096, 512)
+        self.linear5 = nn.Linear(512, out_dim)
         self.relu = nn.ReLU()
 
     def forward(self, x):

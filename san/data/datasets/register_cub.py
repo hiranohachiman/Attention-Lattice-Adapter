@@ -76,7 +76,7 @@ def load_seg_label(seg_dir, label_file):
             label = torch.tensor(int(line.split(',')[1].replace('\n', '').replace(' ', '')))
             record['file_name'] = os.path.join('datasets/CUB/', img_path.replace(' ', ''))
             record['label'] = label
-            record['sem_seg_file_name'] = os.path.join(seg_dir, img_path.replace('test/', '').replace('/', '_').replace('.jpg', '.png'))
+            record['sem_seg_file_name'] = os.path.join(seg_dir, img_path.replace('train/', '').replace('/', '_').replace('.jpg', '.png'))
             dataset_dicts.append(record)
 
     return dataset_dicts
@@ -85,8 +85,9 @@ def load_seg_label(seg_dir, label_file):
 def register_all_cub(root):
     root = os.path.join(root, 'CUB')
     meta = _get_cub_meta(CLASS_NAMES)
-    for name, image_dirname, sem_seg_dirname, label_name in (('train', 'train', 'extracted_train_segmentation', 'train_label.txt'),
-                                                             ('val', 'test', 'extracted_test_segmentation', 'test_label.txt')):
+    for name, image_dirname, sem_seg_dirname, label_name in (('val', 'test', 'extracted_test_segmentation', 'test_label.txt'),
+                                                             ('train', 'train', 'extracted_train_segmentation', 'train_label.txt'),
+                                                             ):
         image_dir = os.path.join(root, image_dirname)
         gt_dir = os.path.join(root, sem_seg_dirname)
         label_file = os.path.join(root, label_name)
