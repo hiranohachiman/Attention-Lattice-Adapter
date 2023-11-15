@@ -163,7 +163,7 @@ class SAN(nn.Module):
 
         # clip_image_features[9] += normalize_per_batch(reshaped_mask_preds)
         mask_preds_for_output = self.conv1(mask_preds[-1])
-        save_side_by_side_image(mask_preds_for_output[0], for_saving_images[0])
+        # save_side_by_side_image(mask_preds_for_output[0], for_saving_images[0])
 
         mask_embs = [self.clip_rec_head(clip_image_features, attn_bias, normalize=True) for attn_bias in attn_biases]
         # print(mask_embs[-1].shape) # [8, 100, 512]
