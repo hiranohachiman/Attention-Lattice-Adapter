@@ -168,13 +168,14 @@ def normalize_per_batch(tensor):
 class SimpleClassifier(nn.Module):
     def __init__(self):
         super(SimpleClassifier, self).__init__()
-        self.fc = nn.Linear(512, 200)
+        self.flatten = nn.Flatten() # テンソルを平坦化する
+        self.fc = nn.Linear(307200, 200) # 全結合層（入力特徴数を307200に設定）
 
     def forward(self, x):
-        x = self.fc(x)  # [8, 100, 200]
-        x = x.mean(dim=1, keepdim=True)  # [8, 1, 200]
+        x = self.flatten(x)
+        x = self.fc(x)
         return x
-
+    
 class ModifiedModel(nn.Module):
 
     def __init__(self):

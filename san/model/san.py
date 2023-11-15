@@ -49,7 +49,7 @@ class SAN(nn.Module):
         self.conv2 = ConvReducer(100, 1)
         self.simplecnn = ClassificationCNN()
         self.modi = ModifiedModel()
-        self.mask_embs_classifier = SimpleClassifier()
+        self.simpleclassirier = SimpleClassifier()
         self.attention = nn.MultiheadAttention(768, 8)
         self.transformer = TransformerDecoder(200)
         self.linear5 = LinearLayer(200, 200)
@@ -154,7 +154,8 @@ class SAN(nn.Module):
         # clip_input *= mask_preds_for_multiply
         # clip_image_features = self.clip_visual_extractor(clip_input)
 
-        logits = self.clipfeatureclassifier(clip_image_features[9])
+        # logits = self.clipfeatureclassifier(clip_image_features[9])
+        logits = self.simpleclassirier(clip_image_features[9])
         logits = self.linear5(logits)
         
         # clip_image_features[9] += normalize_per_batch(reshaped_mask_preds)
