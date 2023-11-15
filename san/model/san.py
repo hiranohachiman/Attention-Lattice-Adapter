@@ -143,15 +143,16 @@ class SAN(nn.Module):
         clip_image_features = self.clip_visual_extractor(clip_input)
         # [8, 768, 20, 20], [1, 8, 768]
         mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
-        # reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
-        # reshaped_mask_preds = self.conv1(reshaped_mask_preds)
-        # reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
+        reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
+        reshaped_mask_preds = self.conv1(reshaped_mask_preds)
+        reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
-        # clip_image_features[9] *= reshaped_mask_preds
+        clip_image_features[9] *= reshaped_mask_preds
+        clip_image_features[9] += reshaped_mask_preds
         mask_preds_for_output = self.conv1(mask_preds[-1])
-        mask_preds_for_multiply = F.interpolate(mask_preds_for_output, size=(320, 320), mode='bilinear', align_corners=False)
-        clip_input *= mask_preds_for_multiply
-        clip_image_features = self.clip_visual_extractor(clip_input)
+        # mask_preds_for_multiply = F.interpolate(mask_preds_for_output, size=(320, 320), mode='bilinear', align_corners=False)
+        # clip_input *= mask_preds_for_multiply
+        # clip_image_features = self.clip_visual_extractor(clip_input)
 
         logits = self.clipfeatureclassifier(clip_image_features[9])
         logits = self.linear5(logits)

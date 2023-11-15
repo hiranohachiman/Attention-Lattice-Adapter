@@ -229,41 +229,41 @@ class ABNClassifier(nn.Module):
         return x
 
 class ClipFeatureClassifier(nn.Module):
-    # def __init__(self, num_classes=200):
-    #     super(ClipFeatureClassifier, self).__init__()
-    #     self.conv1 = nn.Conv2d(768, 256, kernel_size=3, padding=1)
-    #     self.conv2 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
-    #     self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-    #     # 二つのプーリング層を通過した後のサイズを計算
-    #     self.flattened_size = 128 * 5 * 5
-    #     self.fc1 = nn.Linear(self.flattened_size, 1024)
-    #     self.fc2 = nn.Linear(1024, num_classes)
-
-    # def forward(self, x):
-    #     x = self.pool(F.relu(self.conv1(x)))
-    #     x = self.pool(F.relu(self.conv2(x)))
-    #     x = torch.flatten(x, 1)
-    #     x = F.relu(self.fc1(x))
-    #     x = self.fc2(x)
-    #     return x
     def __init__(self, num_classes=200):
         super(ClipFeatureClassifier, self).__init__()
         self.conv1 = nn.Conv2d(768, 256, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(256)
         self.conv2 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(128)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.dropout = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(128, 1024)
+        # 二つのプーリング層を通過した後のサイズを計算
+        self.flattened_size = 128 * 5 * 5
+        self.fc1 = nn.Linear(self.flattened_size, 1024)
         self.fc2 = nn.Linear(1024, num_classes)
 
     def forward(self, x):
-        x = self.pool(F.relu(self.bn1(self.conv1(x))))
-        x = self.pool(F.relu(self.bn2(self.conv2(x))))
-        x = self.global_avg_pool(x)
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
         x = torch.flatten(x, 1)
-        x = self.dropout(x)
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+    # def __init__(self, num_classes=200):
+    #     super(ClipFeatureClassifier, self).__init__()
+    #     self.conv1 = nn.Conv2d(768, 256, kernel_size=3, padding=1)
+    #     self.bn1 = nn.BatchNorm2d(256)
+    #     self.conv2 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
+    #     self.bn2 = nn.BatchNorm2d(128)
+    #     self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+    #     self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+    #     self.dropout = nn.Dropout(0.5)
+    #     self.fc1 = nn.Linear(128, 1024)
+    #     self.fc2 = nn.Linear(1024, num_classes)
+
+    # def forward(self, x):
+    #     x = self.pool(F.relu(self.bn1(self.conv1(x))))
+    #     x = self.pool(F.relu(self.bn2(self.conv2(x))))
+    #     x = self.global_avg_pool(x)
+    #     x = torch.flatten(x, 1)
+    #     x = self.dropout(x)
+    #     x = F.relu(self.fc1(x))
+    #     x = self.fc2(x)
+    #     return x
