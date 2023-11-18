@@ -49,7 +49,7 @@ class SAN(nn.Module):
         self.conv2 = ConvReducer(100, 1)
         self.simplecnn = ClassificationCNN()
         self.modi = ModifiedModel()
-        self.simpleclassirier = SimpleClassifier()
+        self.mask_embs_classifier = SimpleClassifier()
         self.attention = nn.MultiheadAttention(768, 8)
         self.transformer = TransformerDecoder(200)
         self.linear5 = LinearLayer(200, 200)
@@ -86,6 +86,16 @@ class SAN(nn.Module):
                                      importance_sample_ratio=cfg.MODEL.SAN.IMPORTANCE_SAMPLE_RATIO)
             model, _, preprocess = open_clip.create_model_and_transforms(cfg.MODEL.SAN.CLIP_MODEL_NAME,
                                                                          pretrained=cfg.MODEL.SAN.CLIP_PRETRAINED_NAME)
+            # def init_weights(m):
+            #     if isinstance(m, nn.Conv2d):
+            #         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            #     elif isinstance(m, nn.BatchNorm2d):
+            #         nn.init.constant_(m.weight, 1)
+            #         nn.init.constant_(m.bias, 0)
+            #     elif isinstance(m, nn.Linear):
+            #         nn.init.normal_(m.weight, 0, 0.01)
+            #         nn.init.constant_(m.bias, 0)
+            # model.apply(init_weights)
             ov_classifier = LearnableBgOvClassifier(model,
                                                     templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
             clip_visual_extractor = FeatureExtractor(model.visual,
@@ -148,17 +158,11 @@ class SAN(nn.Module):
         reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
         clip_image_features[9] *= reshaped_mask_preds
-        clip_image_features[9] += reshaped_mask_preds
-        mask_preds_for_output = self.conv1(mask_preds[-1])
-        # mask_preds_for_multiply = F.interpolate(mask_preds_for_output, size=(320, 320), mode='bilinear', align_corners=False)
-        # clip_input *= mask_preds_for_multiply
-        # clip_image_features = self.clip_visual_extractor(clip_input)
-
-        # logits = self.clipfeatureclassifier(clip_image_features[9])
-        logits = self.simpleclassirier(clip_image_features[9])
+        logits = self.clipfeatureclassifier(clip_image_features[9])
         logits = self.linear5(logits)
-        
+
         # clip_image_features[9] += normalize_per_batch(reshaped_mask_preds)
+        mask_preds_for_output = self.conv1(mask_preds[-1])
         # save_side_by_side_image(mask_preds_for_output[0], for_saving_images[0])
 
         mask_embs = [self.clip_rec_head(clip_image_features, attn_bias, normalize=True) for attn_bias in attn_biases]
