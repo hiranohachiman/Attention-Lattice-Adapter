@@ -190,25 +190,39 @@ class ModifiedModel(nn.Module):
 
 
 class LinearLayer(nn.Module):
+    # def __init__(self, in_dim, out_dim):
+    #     super(LinearLayer, self).__init__()
+    #     self.linear1 = nn.Linear(in_dim, 256)
+    #     self.linear2 = nn.Linear(256, 1024)
+    #     self.linear3 = nn.Linear(1024, 4096)
+    #     self.linear4 = nn.Linear(4096, 512)
+    #     self.linear5 = nn.Linear(512, out_dim)
+
+    # def forward(self, x):
+    #     x = self.linear1(x)
+    #     x = self.linear2(x)
+    #     x = self.linear3(x)
+    #     x = self.linear4(x)
+    #     x = self.linear5(x)
+    #     return x
+
     def __init__(self, in_dim, out_dim):
         super(LinearLayer, self).__init__()
         self.linear1 = nn.Linear(in_dim, 256)
-        self.linear2 = nn.Linear(256, 1024)
-        self.linear3 = nn.Linear(1024, 4096)
-        self.linear4 = nn.Linear(4096, 512)
-        self.linear5 = nn.Linear(512, out_dim)
-        self.relu = nn.ReLU()
+        self.bn1 = nn.BatchNorm1d(256)
+        self.linear2 = nn.Linear(256, 512)
+        self.bn2 = nn.BatchNorm1d(512)
+        self.linear3 = nn.Linear(512, 256)
+        self.bn3 = nn.BatchNorm1d(256)
+        self.dropout = nn.Dropout(0.25)
+        self.linear4 = nn.Linear(256, out_dim)
 
     def forward(self, x):
-        x = self.linear1(x)
-        # x = self.relu(x)
-        x = self.linear2(x)
-        # x = self.relu(x)
-        x = self.linear3(x)
-        # x = self.relu(x)
+        x = F.relu(self.bn1(self.linear1(x)))
+        x = F.relu(self.bn2(self.linear2(x)))
+        x = F.relu(self.bn3(self.linear3(x)))
+        x = self.dropout(x)
         x = self.linear4(x)
-        # x = self.relu(x)
-        x = self.linear5(x)
         return x
 
 class ABNClassifier(nn.Module):
