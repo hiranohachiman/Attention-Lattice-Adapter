@@ -39,6 +39,12 @@ class ConvReducer(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
+def zero_below_average(tensor):
+    # テンソルの平均値を計算
+    mean_val = tensor.mean()
+    # 平均値以下の値を0に置換
+    tensor[tensor <= mean_val] = 0
+    return tensor
 
 def patch_based_importance_avg(importance_map, patch_size=2):
     B, C, H, W = importance_map.shape
