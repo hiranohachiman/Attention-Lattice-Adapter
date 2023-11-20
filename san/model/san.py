@@ -45,7 +45,7 @@ class SAN(nn.Module):
         self.linear4 = nn.Linear(1024, 200)
         self.register_buffer('pixel_mean', torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer('pixel_std', torch.Tensor(pixel_std).view(-1, 1, 1), False)
-        self.conv1 = ConvReducer(100, 1)
+        self.conv1 = ConvReducer(100, 768)
         self.conv2 = ConvReducer(100, 1)
         self.simplecnn = ClassificationCNN()
         self.modi = ModifiedModel()
@@ -155,15 +155,15 @@ class SAN(nn.Module):
         mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
         reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
         reshaped_mask_preds = self.conv1(reshaped_mask_preds)
-        reshaped_mask_preds = zero_below_average(reshaped_mask_preds)
-        reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1) 
+        # reshaped_mask_preds = zero_below_average(reshaped_mask_preds)
+        # reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
         clip_image_features[9] *= reshaped_mask_preds
         logits = self.clipfeatureclassifier(clip_image_features[9])
         # logits = self.linear5(logits)
 
         # clip_image_features[9] += normalize_per_batch(reshaped_mask_preds)
-        mask_preds_for_output = self.conv1(mask_preds[-1])
+        mask_preds_for_output = self.conv2(mask_preds[-1])
         # save_side_by_side_image(mask_preds_for_output[0], for_saving_images[0])
 
         mask_embs = [self.clip_rec_head(clip_image_features, attn_bias, normalize=True) for attn_bias in attn_biases]
