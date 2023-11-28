@@ -214,12 +214,12 @@ class LinearLayer(nn.Module):
 
     def __init__(self, in_dim, out_dim):
         super(LinearLayer, self).__init__()
-        self.linear1 = nn.Linear(in_dim, 256)
-        self.bn1 = nn.BatchNorm1d(256)
-        self.linear2 = nn.Linear(256, 1024)
-        self.bn2 = nn.BatchNorm1d(1024)
-        self.linear3 = nn.Linear(1024, 256)
-        self.bn3 = nn.BatchNorm1d(256)
+        self.linear1 = nn.Linear(in_dim, 512)
+        self.bn1 = nn.BatchNorm1d(512)
+        self.linear2 = nn.Linear(512, 2048)
+        self.bn2 = nn.BatchNorm1d(2048)
+        self.linear3 = nn.Linear(2048, 512)
+        self.bn3 = nn.BatchNorm1d(512)
         self.dropout = nn.Dropout(0.25)
         self.linear4 = nn.Linear(256, out_dim)
 
