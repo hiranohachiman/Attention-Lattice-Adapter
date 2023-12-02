@@ -25,7 +25,7 @@ class SAN(nn.Module):
 
     @configurable
     def __init__(self, *, clip_visual_extractor, clip_rec_head, side_adapter_network,
-                 ov_classifier, criterion, size_divisibility, asymetric_input=True,
+                 ov_classifier, caption_embedder, criterion, size_divisibility, asymetric_input=True,
                  clip_resolution=0.5, pixel_mean=[0.48145466, 0.4578275, 0.40821073],
                  pixel_std=[0.26862954, 0.26130258, 0.27577711],
                  sem_seg_postprocess_before_inference=False):
@@ -39,6 +39,7 @@ class SAN(nn.Module):
         self.clip_visual_extractor = clip_visual_extractor
         self.clip_rec_head = clip_rec_head
         self.ov_classifier = ov_classifier
+        self.caption_embedder = caption_embedder
         self.linear = nn.Linear(100, 1)
         self.linear2 = nn.Linear(768, 4096)
         self.linear3 = nn.Linear(4096, 1024)
@@ -98,6 +99,8 @@ class SAN(nn.Module):
             # model.apply(init_weights)
             ov_classifier = LearnableBgOvClassifier(model,
                                                     templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
+            caption_embedder = PredefinedOvClassifier(model,
+                                                    templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
             clip_visual_extractor = FeatureExtractor(model.visual,
                                                      last_layer_idx=cfg.MODEL.SAN.FEATURE_LAST_LAYER_IDX,
                                                      frozen_exclude=cfg.MODEL.SAN.CLIP_FROZEN_EXCLUDE)
@@ -115,6 +118,7 @@ class SAN(nn.Module):
                     'clip_rec_head': clip_rec_head,
                     'side_adapter_network': build_side_adapter_network(cfg, clip_visual_extractor.output_shapes),
                     'ov_classifier': ov_classifier,
+                    'caption_embedder': caption_embedder,
                     'criterion': criterion,
                     'size_divisibility': cfg.MODEL.SAN.SIZE_DIVISIBILITY,
                     'asymetric_input': cfg.MODEL.SAN.ASYMETRIC_INPUT,
@@ -133,7 +137,7 @@ class SAN(nn.Module):
             assert len(list(set(dataset_names))) == 1, 'All images in a batch must be from the same dataset.'
             ov_classifier_weight = self.ov_classifier.logit_scale.exp() * \
                                    self.ov_classifier.get_classifier_by_dataset_name(dataset_names[0]) # [201, 512]
-
+        # print(ov_classifier_weight.shape) # [201, 512]
         if self.training:
             labels = [x['label'].to(self.device) for x in batched_inputs]
             labels = torch.stack(labels)
@@ -141,6 +145,9 @@ class SAN(nn.Module):
         #     labels.append(torch.tensor(batched_inputs[0]['label']).to(self.device))
         #     labels = torch.stack(labels)
         images = [x['image'].to(self.device) for x in batched_inputs]
+        captions = [x['caption'] for x in batched_inputs]
+        caption_embeddings = self.caption_embedder(captions)
+        print(caption_embeddings.shape) # [8, 512]
         for_saving_images = ImageList.from_tensors(images, self.size_divisibility)
         for_saving_images = for_saving_images.tensor
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
@@ -160,6 +167,8 @@ class SAN(nn.Module):
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
         clip_image_features[9] *= reshaped_mask_preds
         clip_image_features[9] += reshaped_mask_preds
+
+
         logits = self.clipfeatureclassifier(clip_image_features[9])
         # logits = self.linear5(logits)
 

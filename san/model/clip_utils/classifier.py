@@ -47,9 +47,7 @@ class PredefinedOvClassifier(nn.Module):
     @torch.no_grad()
     def encode_text(self, text, normalize: bool = False):
         cast_dtype = self.transformer.get_cast_dtype()
-
         x = self.token_embedding(text).to(cast_dtype)  # [batch_size, n_ctx, d_model]
-
         x = x + self.positional_embedding.to(cast_dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.transformer(x, attn_mask=self.attn_mask)
