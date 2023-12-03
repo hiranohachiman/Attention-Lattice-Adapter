@@ -12,6 +12,7 @@ try:
 except:
     pass
 import os
+import json
 
 import huggingface_hub
 import torch
@@ -46,7 +47,7 @@ model_cfg = {
     },
 }
 
-label_file = "datasets/CUB/id_score_sample.txt"
+label_file = "datasets/CUB/id_score_sample.jsonl"
 config_file = "configs/san_clip_vit_res4_coco.yaml"
 
 
@@ -94,17 +95,19 @@ def load_model(config_file: str, model_path: str):
     return model
 
 def get_attn_dir(args):
-    attn_dir = args.output_dir.replace("id", "attn_map")
+    attn_dir = args.output_dir.replace("id", "")
     return attn_dir
 
 def get_image_data_details(line, args):
-    img_path = line.split(',')[0]
-    label = int(line.split(',')[1].replace('\n', '').replace(' ', ''))
+    line = json.loads(line)
+    img_path = line["image_path"]
+    label = line["label"]
+    caption = line["caption"]
     output_file = os.path.join(args.output_dir, img_path.replace("test/","",).replace("/","_").replace(" ",""))
-    attn_path = os.path.join(get_attn_dir(args), img_path.replace("test/","",).replace("/","_").replace(" ",""))
+    attn_path = os.path.join(get_attn_dir(args), line["attn_map"])
     img_path = os.path.join('datasets/CUB/', img_path.replace(' ', ''))
 
-    return (img_path, label, attn_path, output_file)
+    return (img_path, caption, label, attn_path, output_file)
 
 
 def main(args):
@@ -121,7 +124,7 @@ def main(args):
     with open(label_file) as (f):
         lines = f.readlines()
         for line in tqdm(lines):
-            img_path, label, attn_path, output_file = get_image_data_details(line, args)
+            img_path, caption, label, attn_path, output_file = get_image_data_details(line, args)
             single_image = Image.open(img_path)
             single_image = single_image.resize((640, 640), Image.ANTIALIAS)
             single_image = np.array(single_image).transpose(2, 0, 1)
@@ -130,7 +133,7 @@ def main(args):
             single_attn = single_attn.resize((640, 640), Image.ANTIALIAS)
             single_attn = np.array(single_attn)
 
-            metrics.evaluate(single_image, single_attn, single_target)
+            metrics.evaluate(single_image, single_attn, caption, single_target)
             metrics.save_roc_curve(args.output_dir)
             x += 1
             if x % 50 == 0:
