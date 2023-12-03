@@ -93,7 +93,7 @@ class Predictor(object):
             self.device = torch.device('cuda')
             self.model = self.model.cuda()
 
-    def predict(self, image_data_or_path: Union[Image.Image, str], vocabulary: List[str] = [],
+    def predict(self, image_data_or_path: Union[Image.Image, str], caption: str, vocabulary: List[str] = [],
                 augment_vocabulary: Union[str, bool] = True, output_file: str = None,
                 label: int=None, predict_class=False) -> Union[dict, None]:
         """
@@ -134,6 +134,7 @@ class Predictor(object):
                     'height': h,
                     'width': w,
                     'label': label,
+                    'caption' : caption,
                     'meta': {'dataset_name': 'cub_val'}
                 }]
 

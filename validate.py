@@ -3,16 +3,19 @@ import os
 import glob
 from tqdm import tqdm
 from san.data.datasets.register_cub import CLASS_NAMES
+import json
 
-label_file = "datasets/CUB/valid_label.txt"
+label_file = "datasets/CUB/valid_label.jsonl"
 config_file = "configs/san_clip_vit_res4_coco.yaml"
 
 def get_image_data_details(line):
-    img_path = line.split(',')[0]
-    label = int(line.split(',')[1].replace('\n', '').replace(' ', ''))
+    line = json.loads(line)
+    img_path = line["image_path"]
+    label = line["label"]
+    caption = line["caption"]
     output_file = os.path.join(args.output_dir, img_path.replace("test/","",).replace("/","_").replace(" ",""))
     img_path = os.path.join('datasets/CUB/', img_path.replace(' ', ''))
-    return (img_path, label, output_file)
+    return (img_path, caption, label, output_file)
 
 
 def load_pth_files(directory):
@@ -36,9 +39,10 @@ def main(args):
         with open(label_file) as (f):
             lines = f.readlines()
             for line in tqdm(lines):
-                img_path, label, output_file = get_image_data_details(line)
+                img_path, caption, label, output_file = get_image_data_details(line)
                 pred_class = predictor.predict(
                     img_path,
+                    caption,
                     [],
                     False,
                     output_file=output_file,

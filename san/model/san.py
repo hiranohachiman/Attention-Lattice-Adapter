@@ -12,7 +12,7 @@ import numpy as np
 import wandb
 import math
 
-from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier, zero_below_average
+from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier, zero_below_average, TensorTransformation
 from .clip_utils import FeatureExtractor, LearnableBgOvClassifier, PredefinedOvClassifier, RecWithAttnbiasHead, get_predefined_templates
 from .criterion import SetCriterion, cross_entropy_loss
 from .matcher import HungarianMatcher
@@ -57,6 +57,7 @@ class SAN(nn.Module):
         self.linear6 = LinearLayer(512, 200)
         self.abnclassifier = ABNClassifier()
         self.clipfeatureclassifier = ClipFeatureClassifier()
+        self.tensortrainformer = TensorTransformation()
 
     @classmethod
     def from_config(cls, cfg):
@@ -146,8 +147,8 @@ class SAN(nn.Module):
         #     labels = torch.stack(labels)
         images = [x['image'].to(self.device) for x in batched_inputs]
         captions = [x['caption'] for x in batched_inputs]
-        caption_embeddings = self.caption_embedder(captions)
-        print(caption_embeddings.shape) # [8, 512]
+        embedded_caption = self.caption_embedder(captions)
+        # print(embedded_caption.shape) # [8, 512]
         for_saving_images = ImageList.from_tensors(images, self.size_divisibility)
         for_saving_images = for_saving_images.tensor
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
@@ -167,9 +168,9 @@ class SAN(nn.Module):
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
         clip_image_features[9] *= reshaped_mask_preds
         clip_image_features[9] += reshaped_mask_preds
+        multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
 
-
-        logits = self.clipfeatureclassifier(clip_image_features[9])
+        logits = self.clipfeatureclassifier(multimodal_features)
         # logits = self.linear5(logits)
 
         # clip_image_features[9] += normalize_per_batch(reshaped_mask_preds)
