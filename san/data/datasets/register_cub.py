@@ -90,8 +90,9 @@ def register_all_cub(root):
     root = os.path.join(root, 'CUB')
     meta = _get_cub_meta(CLASS_NAMES)
     for name, image_dirname, sem_seg_dirname, label_name in (
-                                                             ('train', 'train', 'extracted_train_segmentation', 'train_label.jsonl'),
-                                                             ('val', 'val', 'extracted_val_segmentation', 'valid_label.jsonl')
+                                                             ('val', 'val', 'extracted_val_segmentation', 'valid_label.jsonl'),
+                                                            #  ('train', 'train', 'extracted_train_segmentation', 'train_label.jsonl'),
+                                                             ('train', 'train', 'extracted_train_segmentation', 'train_small.jsonl'),
                                                              ):
         image_dir = os.path.join(root, image_dirname)
         gt_dir = os.path.join(root, sem_seg_dirname)
