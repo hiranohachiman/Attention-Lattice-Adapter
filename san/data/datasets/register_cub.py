@@ -80,7 +80,7 @@ def load_seg_label(seg_dir, label_file):
             record['file_name'] = os.path.join('datasets/CUB/', img_path.replace(' ', ''))
             record['label'] = label
             record['caption'] = caption
-            record['sem_seg_file_name'] = os.path.join(seg_dir, img_path.replace('train/', '').replace('/', '_').replace('.jpg', '.png'))
+            record['sem_seg_file_name'] = os.path.join(seg_dir, img_path.replace('train/', '').replace("test/", "").replace('/', '_').replace('.jpg', '.png'))
             dataset_dicts.append(record)
 
     return dataset_dicts
