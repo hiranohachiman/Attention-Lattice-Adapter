@@ -171,7 +171,7 @@ class SAN(nn.Module):
         multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
 
         logits = self.clipfeatureclassifier(multimodal_features)
-        # logits = self.linear5(logits)
+        logits = self.linear5(logits)
 
         # clip_image_features[9] += normalize_per_batch(reshaped_mask_preds)
         mask_preds_for_output = self.conv1(mask_preds[-1])
