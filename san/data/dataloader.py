@@ -27,7 +27,7 @@ class CUBDataset(Dataset):
     def __getitem__(self, idx):
         img_name = os.path.join(self.root_dir, self.data[idx]['image_path'])
         image = Image.open(img_name)
-        label = torch.tensor(self.data[idx]['label'])
+        label = torch.tensor(int(self.data[idx]['label']))
         caption = self.data[idx]['caption']
         if self.transform:
             image = self.transform(image)
@@ -35,7 +35,7 @@ class CUBDataset(Dataset):
         return image, caption , label
 
 transform = transforms.Compose([
-    transforms.Resize((320, 320)),  # 必要に応じてリサイズ
+    transforms.Resize((112, 112)),  # 必要に応じてリサイズ
     transforms.ToTensor()
 ])
 

@@ -18,6 +18,7 @@ import detectron2.utils.comm as comm
 import torch
 from torch.nn import init
 import torch.nn as nn
+from tqdm import tqdm
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.parallel")
 from detectron2.checkpoint import DetectionCheckpointer
@@ -254,22 +255,23 @@ class Trainer(DefaultTrainer):
         res = OrderedDict({k + "_TTA": v for k, v in res.items()})
         return res
 
-    def my_train(self, model, train_loader, optimizer, criterion, epoch, num_epochs, device="cuda"):
+    def my_train(self, model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, device="cuda"):
         model.train()
         model = model.to(device)
         criterion = criterion.to(device)
-        for i, (images, captions, labels) in enumerate(train_loader):
+        for i, (images, captions, labels) in enumerate(tqdm(train_loader)):
             images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
             labels = labels.to(device)
-            optimizer.zero_grad()
             logits, attn_class_preds = model(images, captions)
             main_loss = criterion(logits, labels)
             attn_loss = criterion(attn_class_preds, labels)
             loss = main_loss + attn_loss
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             if (i + 1) % 100 == 0:
-                print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}'.format(epoch + 1, num_epochs, main_loss.item(), attn_loss.item(), loss.item()))
+                print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, main_loss.item(), attn_loss.item(), loss.item(), optimizer.param_groups[0]['lr']))
+        scheduler.step()
         return model
 
     def eval(self, model, valid_loader, epoch, split="val", device="cuda"):
@@ -278,7 +280,7 @@ class Trainer(DefaultTrainer):
         with torch.no_grad():
             total = 0
             correct = 0
-            for i, (images, captions, labels) in enumerate(valid_loader):
+            for i, (images, captions, labels) in enumerate(tqdm(valid_loader)):
                 images = images.to(device)
                 labels = labels.to(device)
                 logits, _ = model(images, captions)
@@ -326,13 +328,16 @@ def main(args):
 
     trainer = Trainer(cfg)
     optimizer = trainer.build_optimizer(cfg, model)
+    scheduler = trainer.build_lr_scheduler(cfg, optimizer)
     trainer.resume_or_load(resume=args.resume)
     criterion = nn.CrossEntropyLoss()
-    num_epochs = 3
+    num_epochs = cfg.SOLVER.MAX_ITER
     for epoch in range(num_epochs):
-        model = trainer.my_train(model, train_loader, optimizer, criterion, epoch, num_epochs)
+        model = trainer.my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
         if epoch % 1 == 0:
             arrucacy = trainer.eval(model, valid_loader, epoch, split="val")
+        if epoch % 10 == 0:
+            torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
     return
 
 if __name__ == "__main__":
