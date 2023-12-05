@@ -17,7 +17,7 @@ import huggingface_hub
 import torch
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
-from detectron2.data import MetadataCatalog
+# from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultTrainer
 from detectron2.projects.deeplab import add_deeplab_config
 from detectron2.utils.visualizer import Visualizer, random_color
@@ -128,7 +128,7 @@ class Predictor(object):
 
         with torch.no_grad():
             if predict_class:
-                meta = MetadataCatalog.get('cub_val')
+                # meta = MetadataCatalog.get('cub_val')
                 input_data = [{
                     'image': image_tensor,
                     'height': h,
@@ -156,7 +156,8 @@ class Predictor(object):
                 attn2binary_mask(result['attn_map'][0], w, h, output_file)
                 save_attn_map(result['attn_map'][0], w, h, output_file.replace("pred_class", "attn_map"))
             else:
-                self.visualize(image_data, seg_map, ori_vocabulary, output_file, mode='mask')
+                print("error")
+                # self.visualize(image_data, seg_map, ori_vocabulary, output_file, mode='mask')
             # self.visualize(image_data, seg_map, ori_vocabulary, output_file, mode='overlay')
             return result['pred_class']
 
@@ -167,43 +168,43 @@ class Predictor(object):
             'attn_map': result['attn_map'][0]
         }
 
-    def visualize(self, image: Image.Image, sem_seg: np.ndarray, vocabulary: List[str],
-                  output_file: str = None, mode: str = 'overlay') -> Union[Image.Image, None]:
-        """
-        Visualize the segmentation result.
-        Args:
-            image (Image.Image): the input image
-            sem_seg (np.ndarray): the segmentation result
-            vocabulary (List[str]): the vocabulary used for the segmentation
-            output_file (str): the output file path
-            mode (str): the visualization mode, can be "overlay" or "mask"
-        Returns:
-            Image.Image: the visualization result. If output_file is not None, return None.
-        """
-        np.random.seed(0)
-        colors = [random_color(rgb=True, maximum=255) for _ in range(len(vocabulary))]
-        MetadataCatalog.get('_temp').set(stuff_classes=vocabulary, stuff_colors=colors)
-        metadata = MetadataCatalog.get('_temp')
+    # def visualize(self, image: Image.Image, sem_seg: np.ndarray, vocabulary: List[str],
+    #               output_file: str = None, mode: str = 'overlay') -> Union[Image.Image, None]:
+    #     """
+    #     Visualize the segmentation result.
+    #     Args:
+    #         image (Image.Image): the input image
+    #         sem_seg (np.ndarray): the segmentation result
+    #         vocabulary (List[str]): the vocabulary used for the segmentation
+    #         output_file (str): the output file path
+    #         mode (str): the visualization mode, can be "overlay" or "mask"
+    #     Returns:
+    #         Image.Image: the visualization result. If output_file is not None, return None.
+    #     """
+    #     np.random.seed(0)
+    #     colors = [random_color(rgb=True, maximum=255) for _ in range(len(vocabulary))]
+    #     MetadataCatalog.get('_temp').set(stuff_classes=vocabulary, stuff_colors=colors)
+    #     metadata = MetadataCatalog.get('_temp')
 
-        if mode == 'overlay':
-            v = Visualizer(image, metadata)
-            v = v.draw_sem_seg(sem_seg, area_threshold=0).get_image()
-            v = Image.fromarray(v)
-        else:
-            v = np.zeros((image.size[1], image.size[0], 3), dtype=np.uint8)
-            labels, areas = np.unique(sem_seg, return_counts=True)
-            sorted_idxs = np.argsort(-areas).tolist()
-            labels = labels[sorted_idxs]
+    #     if mode == 'overlay':
+    #         v = Visualizer(image, metadata)
+    #         v = v.draw_sem_seg(sem_seg, area_threshold=0).get_image()
+    #         v = Image.fromarray(v)
+    #     else:
+    #         v = np.zeros((image.size[1], image.size[0], 3), dtype=np.uint8)
+    #         labels, areas = np.unique(sem_seg, return_counts=True)
+    #         sorted_idxs = np.argsort(-areas).tolist()
+    #         labels = labels[sorted_idxs]
 
-            for label in filter(lambda l: l < len(metadata.stuff_classes), labels):
-                v[sem_seg == label] = metadata.stuff_colors[label]
-            v = Image.fromarray(v)
+    #         for label in filter(lambda l: l < len(metadata.stuff_classes), labels):
+    #             v[sem_seg == label] = metadata.stuff_colors[label]
+    #         v = Image.fromarray(v)
 
-        MetadataCatalog.remove('_temp')
+    #     MetadataCatalog.remove('_temp')
 
-        if output_file is None:
-            return v
-        v.save(output_file)
+    #     if output_file is None:
+    #         return v
+    #     v.save(output_file)
 
     def _merge_vocabulary(self, vocabulary: List[str]) -> List[str]:
         default_voc = [c for c in CLASS_NAMES]

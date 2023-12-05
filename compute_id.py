@@ -17,9 +17,9 @@ import json
 import huggingface_hub
 import torch
 import numpy as np
-from detectron2.checkpoint import DetectionCheckpointer
+# from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
-from detectron2.data import MetadataCatalog
+# from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultTrainer
 from detectron2.projects.deeplab import add_deeplab_config
 from detectron2.utils.visualizer import Visualizer, random_color
@@ -79,19 +79,19 @@ def setup(config_file: str, device=None):
     cfg.freeze()
     return cfg
 
-def load_model(config_file: str, model_path: str):
-    cfg = setup(config_file)
-    model = DefaultTrainer.build_model(cfg)
-    if model_path.startswith('huggingface:'):
-        model_path = download_model(model_path)
+def load_model(model_path: str):
+    model = torch.load(model_path)
     print('Loading model from: ', model_path)
-    DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
-    print('Loaded model from: ', model_path)
     model.eval()
 
     if torch.cuda.is_available():
         device = torch.device('cuda')
-        model = model.cuda()
+        model = model.to(device)
+    else:
+        device = torch.device('cpu')
+        model = model.to(device)
+
+    print('Loaded model on ', device)
     return model
 
 def get_attn_dir(args):

@@ -3,9 +3,9 @@ import open_clip
 import torch
 from detectron2.config import configurable
 from detectron2.modeling import META_ARCH_REGISTRY
-from detectron2.modeling.postprocessing import sem_seg_postprocess
+# from detectron2.modeling.postprocessing import sem_seg_postprocess
 from detectron2.structures import ImageList
-from detectron2.utils.memory import retry_if_cuda_oom
+# from detectron2.utils.memory import retry_if_cuda_oom
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
@@ -128,25 +128,23 @@ class SAN(nn.Module):
                     'pixel_mean': pixel_mean,
                     'pixel_std': pixel_std}
 
-    def forward(self, batched_inputs):
-        labels = []
-        if 'vocabulary' in batched_inputs[0]:
-            ov_classifier_weight = self.ov_classifier.logit_scale.exp() * \
-                                   self.ov_classifier.get_classifier_by_vocabulary(batched_inputs[0]['vocabulary'])
-        else:
-            dataset_names = [x['meta']['dataset_name'] for x in batched_inputs]
-            assert len(list(set(dataset_names))) == 1, 'All images in a batch must be from the same dataset.'
-            ov_classifier_weight = self.ov_classifier.logit_scale.exp() * \
-                                   self.ov_classifier.get_classifier_by_dataset_name(dataset_names[0]) # [201, 512]
+    def forward(self, images, captions):
+        # if 'vocabulary' in batched_inputs[0]:
+        #     ov_classifier_weight = self.ov_classifier.logit_scale.exp() * \
+        #                            self.ov_classifier.get_classifier_by_vocabulary(batched_inputs[0]['vocabulary'])
+        # else:
+        #     dataset_names = [x['meta']['dataset_name'] for x in batched_inputs]
+        #     assert len(list(set(dataset_names))) == 1, 'All images in a batch must be from the same dataset.'
+        #     ov_classifier_weight = self.ov_classifier.logit_scale.exp() * \
+        #                            self.ov_classifier.get_classifier_by_dataset_name(dataset_names[0]) # [201, 512]
         # print(ov_classifier_weight.shape) # [201, 512]
-        if self.training:
-            labels = [x['label'].to(self.device) for x in batched_inputs]
-            labels = torch.stack(labels)
+        # if self.training:
+        #     labels = torch.stack(labels)
         # else:
         #     labels.append(torch.tensor(batched_inputs[0]['label']).to(self.device))
         #     labels = torch.stack(labels)
-        images = [x['image'].to(self.device) for x in batched_inputs]
-        captions = [x['caption'] for x in batched_inputs]
+        images = [x.to(self.device) for x in images]
+        captions = [x for x in captions]
         embedded_caption = self.caption_embedder(captions)
         # print(embedded_caption.shape) # [8, 512]
         for_saving_images = ImageList.from_tensors(images, self.size_divisibility)
@@ -182,61 +180,63 @@ class SAN(nn.Module):
         # logits = torch.mean(mask_embs[-1], dim=1).squeeze(1)
         # logits = self.linear6(logits)
         # logits = self.mask_embs_classifier(mask_embs[-1]).squeeze(1)
-        repeated_ov_classifier_weight = ov_classifier_weight.unsqueeze(0).repeat(8, 1, 1)
+        # repeated_ov_classifier_weight = ov_classifier_weight.unsqueeze(0).repeat(8, 1, 1)
         # mask_embs = [self.transformer(mask_emb, repeated_ov_classifier_weight[:, :200, :]) for mask_emb in mask_embs]
-        mask_logits = [torch.einsum('bqc,nc->bqn', mask_emb, ov_classifier_weight) for mask_emb in mask_embs] # [8, 100, 201]
+        # mask_logits = [torch.einsum('bqc,nc->bqn', mask_emb, ov_classifier_weight) for mask_emb in mask_embs] # [8, 100, 201]
         # logits = mask_logits[-1][:, :, :200]
         # logits = torch.mean(logits, dim=1)
         # logits = self.linear5(logits)
         # logits = self.linear4(self.linear3(self.linear2(clip_image_features["9_cls_token"].squeeze(0))))
         # logits, _ = self.attention(clip_image_features["9_cls_token"], clip_image_features["9_cls_token"],clip_image_features["9_cls_token"])
         # logits = self.linear4(self.linear3(self.linear2(logits.squeeze(0))))
-        if self.training:
-            loss = cross_entropy_loss(logits, labels)
-            if torch.isnan(loss).any():
-                print(logits, labels)
-            attn_class_preds = self.abnclassifier(mask_preds[-1])
-            # mask_preds = F.interpolate(mask_preds[-1],
-            #                            size=(images.tensor.shape[-2], images.tensor.shape[-1]),
-            #                            mode='bilinear',
-            #                            align_corners=False)
-            # num_input_channels = mask_preds.size(1)
-            # num_classes = 200
-            # attn_classifier = ClassifierHead(num_input_channels, num_classes).cuda()
-            # attn_class_preds = attn_classifier(mask_preds)
-            attn_loss = cross_entropy_loss(attn_class_preds, labels)
-            if math.isnan(loss):
-                loss = 0
+        # if self.training:
+        attn_class_preds = self.abnclassifier(mask_preds[-1])
+        return logits, attn_class_preds
+            # loss = cross_entropy_loss(logits, labels)
+            # if torch.isnan(loss).any():
+            #     print(logits, labels)
+            # # attn_class_preds = self.abnclassifier(mask_preds[-1])
+            # # mask_preds = F.interpolate(mask_preds[-1],
+            # #                            size=(images.tensor.shape[-2], images.tensor.shape[-1]),
+            # #                            mode='bilinear',
+            # #                            align_corners=False)
+            # # num_input_channels = mask_preds.size(1)
+            # # num_classes = 200
+            # # attn_classifier = ClassifierHead(num_input_channels, num_classes).cuda()
+            # # attn_class_preds = attn_classifier(mask_preds)
+            # attn_loss = cross_entropy_loss(attn_class_preds, labels)
+            # if math.isnan(loss):
+            #     loss = 0
 
-            losses = {'normal_loss': loss, 'attn_loss': attn_loss}
-            # losses = {'attn_loss': attn_loss}
+            # losses = {'normal_loss': loss, 'attn_loss': attn_loss}
+            # # losses = {'attn_loss': attn_loss}
 
-            wandb.log(losses)
-            return losses
+            # wandb.log(losses)
+            # return losses
 
-        mask_preds = mask_preds[-1]
-        mask_logits = mask_logits[-1]
-        mask_preds = F.interpolate(mask_preds,
-                                   size=(images.tensor.shape[-2], images.tensor.shape[-1]),
-                                   mode='bilinear',
-                                   align_corners=False)
-        processed_results = []
-        for mask_cls_result, mask_pred_result, input_per_image, image_size, logit in zip(mask_logits, mask_preds, batched_inputs, images.image_sizes, logits):
-            height = input_per_image.get('height', image_size[0])
-            width = input_per_image.get('width', image_size[1])
-            processed_results.append({})
-            if self.sem_seg_postprocess_before_inference:
-                mask_pred_result = retry_if_cuda_oom(sem_seg_postprocess)(mask_pred_result, image_size, height, width)
-                mask_cls_result = mask_cls_result.to(mask_pred_result)
-            r = retry_if_cuda_oom(self.semantic_inference)(mask_cls_result, mask_pred_result)
-            if not self.sem_seg_postprocess_before_inference:
-                r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
-            processed_results[-1]['sem_seg'] = r
-            processed_results[-1]['pred_class'] = int(logit.argmax())
-            # processed_results[-1]['gt_class'] = label
-            processed_results[-1]['attn_map'] = mask_preds_for_output
-            processed_results[-1]['logit'] = logit.unsqueeze(0)
-        return processed_results
+        # mask_preds = mask_preds[-1]
+        # mask_logits = mask_logits[-1]
+        # mask_preds = F.interpolate(mask_preds,
+        #                            size=(images.tensor.shape[-2], images.tensor.shape[-1]),
+        #                            mode='bilinear',
+        #                            align_corners=False)
+        # processed_results = []
+        # for mask_cls_result, mask_pred_result, input_per_image, image_size, logit in zip(mask_logits, mask_preds, batched_inputs, images.image_sizes, logits):
+        #     height = input_per_image.get('height', image_size[0])
+        #     width = input_per_image.get('width', image_size[1])
+        #     processed_results.append({})
+        #     # if self.sem_seg_postprocess_before_inference:
+        #     #     mask_pred_result = retry_if_cuda_oom(sem_seg_postprocess)(mask_pred_result, image_size, height, width)
+        #     #     mask_cls_result = mask_cls_result.to(mask_pred_result)
+        #     # r = retry_if_cuda_oom(self.semantic_inference)(mask_cls_result, mask_pred_result)
+        #     # if not self.sem_seg_postprocess_before_inference:
+        #     #     r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
+        #     # processed_results[-1]['sem_seg'] = r
+        #     processed_results[-1]['pred_class'] = int(logit.argmax())
+        #     # processed_results[-1]['gt_class'] = label
+        #     processed_results[-1]['attn_map'] = mask_preds_for_output
+        #     processed_results[-1]['logit'] = logit.unsqueeze(0)
+        # return processed_results
 
     def prepare_targets(self, targets, images):
         h_pad, w_pad = images.tensor.shape[-2:]
