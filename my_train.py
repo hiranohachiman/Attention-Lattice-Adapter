@@ -18,7 +18,6 @@ import detectron2.utils.comm as comm
 import torch
 from torch.nn import init
 import torch.nn as nn
-from torchinfo import summary
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.parallel")
@@ -260,23 +259,19 @@ class Trainer(DefaultTrainer):
         model.train()
         model = model.to(device)
         criterion = criterion.to(device)
-        main_losses = []
-        attn_losses = []
         for i, (images, captions, labels) in enumerate(tqdm(train_loader)):
             images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
             labels = labels.to(device)
-            logits, attn_class_preds = model(images)
+            logits, attn_class_preds = model(images, captions)
             main_loss = criterion(logits, labels)
             attn_loss = criterion(attn_class_preds, labels)
-            main_losses.append(main_loss.item())
-            attn_losses.append(attn_loss.item())
             loss = main_loss + attn_loss
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        # scheduler.step()
-        print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, sum(main_losses) / len(main_losses), sum(attn_losses) / len(attn_losses), sum(main_losses) / len(main_losses) + sum(attn_losses) / len(attn_losses), optimizer.param_groups[0]['lr']))
-
+            if (i + 1) % 100 == 0:
+                print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, main_loss.item(), attn_loss.item(), loss.item(), optimizer.param_groups[0]['lr']))
+        scheduler.step()
         return model
 
     def eval(self, model, valid_loader, epoch, split="val", device="cuda"):
@@ -288,7 +283,7 @@ class Trainer(DefaultTrainer):
             for i, (images, captions, labels) in enumerate(tqdm(valid_loader)):
                 images = images.to(device)
                 labels = labels.to(device)
-                logits, _ = model(images)
+                logits, _ = model(images, captions)
                 _, predicted = torch.max(logits.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
@@ -319,21 +314,17 @@ def setup(args):
 def main(args):
     cfg = setup(args)
     model = Trainer.build_model(cfg)
-    summary(
-        model,
-        input_size=(8, 3, 640, 640),
-    )
-    # if args.eval_only:
-    #     model = Trainer.build_model(cfg)
-    #     DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
-    #         cfg.MODEL.WEIGHTS, resume=args.resume
-    #     )
-    #     res = Trainer.test(cfg, model)
-    #     if cfg.TEST.AUG.ENABLED:
-    #         res.update(Trainer.test_with_TTA(cfg, model))
-    #     if comm.is_main_process():
-    #         verify_results(cfg, res)
-    #     return res
+    if args.eval_only:
+        model = Trainer.build_model(cfg)
+        DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+            cfg.MODEL.WEIGHTS, resume=args.resume
+        )
+        res = Trainer.test(cfg, model)
+        if cfg.TEST.AUG.ENABLED:
+            res.update(Trainer.test_with_TTA(cfg, model))
+        if comm.is_main_process():
+            verify_results(cfg, res)
+        return res
 
     trainer = Trainer(cfg)
     optimizer = trainer.build_optimizer(cfg, model)
