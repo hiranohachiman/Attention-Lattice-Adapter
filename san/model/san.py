@@ -128,10 +128,10 @@ class SAN(nn.Module):
                     'pixel_mean': pixel_mean,
                     'pixel_std': pixel_std}
 
-    def forward(self, images, captions):
+    def forward(self, images):
         images = [x.to(self.device) for x in images]
-        captions = [x for x in captions]
-        embedded_caption = self.caption_embedder(captions)
+        # captions = [x for x in captions]
+        # embedded_caption = self.caption_embedder(captions)
         # print(embedded_caption.shape) # [8, 512]
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
         images = ImageList.from_tensors(images, self.size_divisibility)
@@ -151,10 +151,10 @@ class SAN(nn.Module):
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
         clip_image_features[9] *= reshaped_mask_preds
         # clip_image_features[9] += reshaped_mask_preds
-        multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
+        # multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
 
-        logits = self.clipfeatureclassifier(multimodal_features)
-        logits = self.linear5(logits)
+        logits = self.clipfeatureclassifier(clip_image_features[9])
+        # logits = self.linear5(logits)
 
         attn_class_preds = self.abnclassifier(mask_preds[-1])
         return logits, attn_class_preds
