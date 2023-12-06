@@ -46,6 +46,7 @@ from san import (
     SemanticSegmentorWithTTA,
     add_san_config,
 )
+from san.model.san import SAN
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
 from san.data.dataloader import train_loader, valid_loader, test_loader
@@ -313,7 +314,7 @@ def setup(args):
 
 def main(args):
     cfg = setup(args)
-    model = Trainer.build_model(cfg)
+    model = SAN(**SAN.from_config(cfg))
     if args.eval_only:
         model = Trainer.build_model(cfg)
         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
