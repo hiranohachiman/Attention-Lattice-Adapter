@@ -149,7 +149,7 @@ class SAN(nn.Module):
         # reshaped_mask_preds = zero_below_average(reshaped_mask_preds)
         # reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
-        clip_image_features[9] *= reshaped_mask_preds
+        # clip_image_features[9] *= reshaped_mask_preds
         # clip_image_features[9] += reshaped_mask_preds
         # multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
 

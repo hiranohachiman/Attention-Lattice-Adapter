@@ -263,7 +263,6 @@ class Trainer(DefaultTrainer):
         main_losses = []
         attn_losses = []
         for i, (images, captions, labels) in enumerate(tqdm(train_loader)):
-            scheduler.step()
             images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
             labels = labels.to(device)
             logits, attn_class_preds = model(images)
@@ -275,6 +274,7 @@ class Trainer(DefaultTrainer):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+        # scheduler.step()
         print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, sum(main_losses) / len(main_losses), sum(attn_losses) / len(attn_losses), sum(main_losses) / len(main_losses) + sum(attn_losses) / len(attn_losses), optimizer.param_groups[0]['lr']))
 
         return model
@@ -340,7 +340,7 @@ def main(args):
     scheduler = trainer.build_lr_scheduler(cfg, optimizer)
     trainer.resume_or_load(resume=args.resume)
     criterion = nn.CrossEntropyLoss()
-    num_epochs = cfg.SOLVER.MAX_ITER//625
+    num_epochs = cfg.SOLVER.MAX_ITER
     for epoch in range(num_epochs):
         model = trainer.my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
         if epoch % 1 == 0:
