@@ -128,7 +128,7 @@ class SAN(nn.Module):
                     'pixel_mean': pixel_mean,
                     'pixel_std': pixel_std}
 
-    def forward(self, images, captions):
+    def forward(self, images, clip_image_features, captions):
         images = [x.to(self.device) for x in images]
         captions = [x for x in captions]
         # embedded_caption = self.caption_embedder(captions)
@@ -141,7 +141,8 @@ class SAN(nn.Module):
         if self.asymetric_input:
             clip_input = F.interpolate(clip_input, scale_factor=self.clip_resolution, mode='bilinear')
         # print(clip_input.shape) # [8, 3, 320, 320]
-        clip_image_features = self.clip_visual_extractor(clip_input)
+        # clip_image_features = self.clip_visual_extractor(clip_input)
+        # print(clip_image_features.keys())
         # [8, 768, 20, 20], [1, 8, 768]
         mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
         reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
