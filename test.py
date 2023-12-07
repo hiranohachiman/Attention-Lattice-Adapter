@@ -27,7 +27,7 @@ class HDF5Dataset(Dataset):
     def __init__(self, file_path):
         self.file_path = file_path
         with h5py.File(file_path, 'r') as h5f:
-            self.length = h5f['cls_token_0'].shape[0]  # サンプル数を取得
+            self.length = h5f["features_0"].shape[0]  # サンプル数を取得
 
     def __len__(self):
         return self.length
@@ -36,18 +36,18 @@ class HDF5Dataset(Dataset):
         features = []
         with h5py.File(self.file_path, 'r') as h5f:
             for i in range(10):  # 各特徴量を読み出す
-                dset_name = f'cls_token_{i}'
+                dset_name = f'features_{i}'
                 feature = h5f[dset_name][idx, ...]
                 features.append(torch.from_numpy(feature))
         return features
 
 # 使用例
-dataset = HDF5Dataset('datasets/CUB/valid_cls_tokens.h5')
+dataset = HDF5Dataset('datasets/CUB/train_features.h5')
 data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
 # データローダーからデータを取得する例
 
-input_dir = "datasets/CUB/valid_label.jsonl"
+input_dir = "datasets/CUB/train_label.jsonl"
 
 def get_clip_features(image: torch.tensor):
     model, _, preprocess = open_clip.create_model_and_transforms("ViT-B/16",
@@ -119,5 +119,5 @@ def get_features_from_index(index):
 for index, batch_features in enumerate(tqdm(data_loader)):
     raw_features = get_features_from_index(index)
     for i in range(10):
-        assert torch.equal(raw_features[f"{i}_cls_token"], batch_features[i]), "Tensors are not equal"
+        assert torch.equal(raw_features[i], batch_features[i]), "Tensors are not equal"
     # batch_features は、各サンプルに対する10個の特徴量のリスト

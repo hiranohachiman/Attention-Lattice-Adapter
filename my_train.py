@@ -41,6 +41,8 @@ from detectron2.evaluation import (
 from detectron2.projects.deeplab import add_deeplab_config, build_lr_scheduler
 from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.utils.logger import setup_logger
+from detectron2.projects.deeplab.lr_scheduler import WarmupPolyLR
+
 from tabulate import tabulate
 
 from san import (
@@ -308,6 +310,139 @@ def eval(model, valid_loader, epoch, split="val", device="cuda"):
         wandb.log({f"{split}_accuracy": accuracy})
     return accuracy
 
+def build_lr_scheduler(
+    cfg, optimizer
+):
+    """
+    Build a LR scheduler from config.
+    """
+    name = cfg.SOLVER.LR_SCHEDULER_NAME
+    if name == "WarmupPolyLR":
+        return WarmupPolyLR(
+            optimizer,
+            cfg.SOLVER.MAX_ITER,
+            warmup_factor=cfg.SOLVER.WARMUP_FACTOR,
+            warmup_iters=cfg.SOLVER.WARMUP_ITERS,
+            warmup_method=cfg.SOLVER.WARMUP_METHOD,
+            power=cfg.SOLVER.POLY_LR_POWER,
+            constant_ending=cfg.SOLVER.POLY_LR_CONSTANT_ENDING,
+        )
+
+def build_optimizer(cfg, model):
+    # model.apply(apply_weight_init)
+    # # print("!!!!!!!!!!!!!!!!!!!")
+    # # print(model)
+    # # print("!!!!!!!!!!!!!!!!!!!!")
+    weight_decay_norm = cfg.SOLVER.WEIGHT_DECAY_NORM
+    weight_decay_embed_group = cfg.SOLVER.WEIGHT_DECAY_EMBED_GROUP
+    weight_decay_embed = cfg.SOLVER.WEIGHT_DECAY_EMBED
+
+    defaults = {}
+    defaults["lr"] = cfg.SOLVER.BASE_LR
+    defaults["weight_decay"] = cfg.SOLVER.WEIGHT_DECAY
+
+    norm_module_types = (
+        torch.nn.BatchNorm1d,
+        torch.nn.BatchNorm2d,
+        torch.nn.BatchNorm3d,
+        torch.nn.SyncBatchNorm,
+        # NaiveSyncBatchNorm inherits from BatchNorm2d
+        torch.nn.GroupNorm,
+        torch.nn.InstanceNorm1d,
+        torch.nn.InstanceNorm2d,
+        torch.nn.InstanceNorm3d,
+        torch.nn.LayerNorm,
+        torch.nn.LocalResponseNorm,
+    )
+
+    params: List[Dict[str, Any]] = []
+    memo: Set[torch.nn.parameter.Parameter] = set()
+    for module_name, module in model.named_modules():
+        for module_param_name, value in module.named_parameters(recurse=False):
+            if not value.requires_grad:
+                continue
+            # Avoid duplicating parameters
+            if value in memo:
+                continue
+            memo.add(value)
+
+            hyperparams = copy.copy(defaults)
+            hyperparams["param_name"] = ".".join([module_name, module_param_name])
+            if "side_adapter_network" in module_name:
+                hyperparams["lr"] = (
+                    hyperparams["lr"] * cfg.SOLVER.BACKBONE_MULTIPLIER
+                )
+            # scale clip lr
+            if "clip" in module_name:
+                hyperparams["lr"] = hyperparams["lr"] * cfg.SOLVER.CLIP_MULTIPLIER
+            if any([x in module_param_name for x in weight_decay_embed_group]):
+                hyperparams["weight_decay"] = weight_decay_embed
+            if isinstance(module, norm_module_types):
+                hyperparams["weight_decay"] = weight_decay_norm
+            if isinstance(module, torch.nn.Embedding):
+                hyperparams["weight_decay"] = weight_decay_embed
+            params.append({"params": [value], **hyperparams})
+
+    def maybe_add_full_model_gradient_clipping(optim):
+        # detectron2 doesn't have full model gradient clipping now
+        clip_norm_val = cfg.SOLVER.CLIP_GRADIENTS.CLIP_VALUE
+        enable = (
+            cfg.SOLVER.CLIP_GRADIENTS.ENABLED
+            and cfg.SOLVER.CLIP_GRADIENTS.CLIP_TYPE == "full_model"
+            and clip_norm_val > 0.0
+        )
+
+        class FullModelGradientClippingOptimizer(optim):
+            def step(self, closure=None):
+                all_params = itertools.chain(
+                    *[x["params"] for x in self.param_groups]
+                )
+                torch.nn.utils.clip_grad_norm_(all_params, clip_norm_val)
+                super().step(closure=closure)
+
+        return FullModelGradientClippingOptimizer if enable else optim
+
+    optimizer_type = cfg.SOLVER.OPTIMIZER
+    if optimizer_type == "SGD":
+        optimizer = maybe_add_full_model_gradient_clipping(torch.optim.SGD)(
+            params, cfg.SOLVER.BASE_LR, momentum=cfg.SOLVER.MOMENTUM
+        )
+    elif optimizer_type == "ADAMW":
+        optimizer = maybe_add_full_model_gradient_clipping(torch.optim.AdamW)(
+            params, cfg.SOLVER.BASE_LR
+        )
+    else:
+        raise NotImplementedError(f"no optimizer type {optimizer_type}")
+    if not cfg.SOLVER.CLIP_GRADIENTS.CLIP_TYPE == "full_model":
+        optimizer = maybe_add_gradient_clipping(cfg, optimizer)
+    # display the lr and wd of each param group in a table
+    optim_info = defaultdict(list)
+    total_params_size = 0
+    for group in optimizer.param_groups:
+        optim_info["Param Name"].append(group["param_name"])
+        optim_info["Param Shape"].append(
+            "X".join([str(x) for x in list(group["params"][0].shape)])
+        )
+        total_params_size += group["params"][0].numel()
+        optim_info["Lr"].append(group["lr"])
+        optim_info["Wd"].append(group["weight_decay"])
+    # Counting the number of parameters
+    optim_info["Param Name"].append("Total")
+    optim_info["Param Shape"].append("{:.2f}M".format(total_params_size / 1e6))
+    optim_info["Lr"].append("-")
+    optim_info["Wd"].append("-")
+    table = tabulate(
+        list(zip(*optim_info.values())),
+        headers=optim_info.keys(),
+        tablefmt="grid",
+        floatfmt=".2e",
+        stralign="center",
+        numalign="center",
+    )
+    logger = logging.getLogger("san")
+    logger.setLevel(logging.ERROR)
+    logger.info("Optimizer Info:\n{}\n".format(table))
+    return optimizer
 
 
 def setup(args):
@@ -344,12 +479,11 @@ def main(args):
     #     return res
 
     # trainer = Trainer(cfg)
-    optimizer = optim.AdamW(model.parameters(), lr=cfg.SOLVER.BASE_LR)
+    optimizer = build_optimizer(cfg, model)
     # trainer.resume_or_load(resume=args.resume)
     criterion = nn.CrossEntropyLoss()
     num_epochs = cfg.SOLVER.MAX_ITER
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[i+1 for i in range(num_epochs)], gamma=0.9)
-
+    scheduler = build_lr_scheduler(cfg, optimizer)
     for epoch in range(num_epochs):
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
         if epoch % 1 == 0:
