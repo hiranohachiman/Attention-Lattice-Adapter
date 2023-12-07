@@ -20,7 +20,6 @@ from torch.nn import init
 import torch.nn as nn
 from tqdm import tqdm
 import wandb
-from torch import optim
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.parallel")
 from detectron2.checkpoint import DetectionCheckpointer
@@ -264,50 +263,65 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
     criterion = criterion.to(device)
     main_losses = []
     attn_losses = []
-    for i, (images, features, cls_tokens, captions, labels) in enumerate(tqdm(train_loader)):
-        clip_image_features = {}
-        for i in range(len(features)):
-            clip_image_features[i] = features[i].to(device)
-            clip_image_features[f"{i}_cls_token"] = cls_tokens[i].to(device)
+    for i, (images, captions, labels) in enumerate(tqdm(train_loader)):
+        images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
         labels = labels.to(device)
-        logits, attn_class_preds = model(images, clip_image_features, captions)
+        logits, attn_class_preds = model(images, captions)
         main_loss = criterion(logits, labels)
         attn_loss = criterion(attn_class_preds, labels)
-        loss = main_loss + attn_loss
         main_losses.append(main_loss.item())
         attn_losses.append(attn_loss.item())
+        loss = main_loss + attn_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    avg_main_loss = sum(main_losses) / len(main_losses)
-    avg_attn_loss = sum(attn_losses) / len(attn_losses)
-    wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
-    print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
+        avg_main_loss = sum(main_losses) / len(main_losses)
+        avg_attn_loss = sum(attn_losses) / len(attn_losses)
+        if (i + 1) % 100 == 0:
+            print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
     scheduler.step()
+    wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
     return model
 
-def eval(model, valid_loader, epoch, split="val", device="cuda"):
+def eval(model, valid_loader, criterion, split="val", device="cuda"):
     model.eval()
     model = model.to(device)
+    losses = []
     with torch.no_grad():
         total = 0
         correct = 0
-        for i, (images, features, cls_tokens, captions, labels) in enumerate(tqdm(valid_loader)):
-            clip_image_features = {}
-            for i in range(len(features)):
-                clip_image_features[i] = features[i].to(device)
-                clip_image_features[f"{i}_cls_token"] = cls_tokens[i].to(device)
+        for i, (images, captions, labels) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
-            logits, _ = model(images, clip_image_features, captions)
+            logits, _ = model(images, captions)
             _, predicted = torch.max(logits.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            losses.append(criterion(logits, labels).item())
+        loss = sum(losses) / len(losses) 
         accuracy = 100 * correct / total
-        print('Accuracy of the model on the {} images: {:.3f} %'.format(split, 100 * correct / total))
-        wandb.log({f"{split}_accuracy": accuracy})
-    return accuracy
+        print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}'.format(split, 100 * correct / total, loss))
+        wandb.log({f"{split}_accuracy": accuracy, f"{split}_loss:": loss})
+    return accuracy, loss
 
+class EarlyStopping():
+    def __init__(self, patience=5):
+        self.patience = patience
+        self.best_loss = float('inf')
+        self.best_model = None
+        self.no_improvement_count = 0
+    
+    def early_stop(self, loss, model):
+        if loss < self.best_loss:
+            self.best_loss = loss
+            self.no_improvement_count = 0
+            self.best_model = model
+        else:
+            self.no_improvement_count += 1
+        if self.no_improvement_count >= self.patience:
+            return True, self.best_model
+        else:
+            return False, False
 
 
 def setup(args):
@@ -348,14 +362,17 @@ def main(args):
     # trainer.resume_or_load(resume=args.resume)
     criterion = nn.CrossEntropyLoss()
     num_epochs = cfg.SOLVER.MAX_ITER
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[i+1 for i in range(num_epochs)], gamma=0.9)
-
+    early_stopper = EarlyStopping()
     for epoch in range(num_epochs):
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
-        if epoch % 1 == 0:
-            arrucacy = eval(model, valid_loader, epoch, split="val")
-        if epoch % 10 == 0:
-            torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+        arrucacy, loss = eval(model, valid_loader, criterion, split="val")
+        torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+        early_stop, best_model = early_stopper.early_stop(loss, model)
+        if early_stop:
+            model = best_model
+            print("early stopped...")
+            break
+    arrucacy, loss = eval(model, test_loader, criterion, split="test")
     return
 
 if __name__ == "__main__":
