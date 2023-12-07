@@ -26,8 +26,8 @@ class SAN(nn.Module):
     @configurable
     def __init__(self, *, clip_visual_extractor, clip_rec_head, side_adapter_network,
                  ov_classifier, caption_embedder, criterion, size_divisibility, asymetric_input=True,
-                 clip_resolution=0.5, pixel_mean=[0.48145466, 0.4578275, 0.40821073],
-                 pixel_std=[0.26862954, 0.26130258, 0.27577711],
+                 clip_resolution=0.5, pixel_mean=[0.48683309, 0.50015243, 0.43198669],
+                 pixel_std=[0.53930313, 0.54964845, 0.50728528],
                  sem_seg_postprocess_before_inference=False):
         super().__init__()
         self.asymetric_input = asymetric_input
@@ -154,7 +154,7 @@ class SAN(nn.Module):
         # multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
 
         logits = self.clipfeatureclassifier(clip_image_features[9])
-        # logits = self.linear5(clip_image_features[9])
+        logits = self.linear5(logits)
 
         attn_class_preds = self.abnclassifier(mask_preds[-1])
         return logits, attn_class_preds

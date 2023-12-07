@@ -24,6 +24,7 @@ class CUBDataset(Dataset):
 
     def __len__(self):
         return len(self.data)
+        # return len(self.data) // 60
 
     def __getitem__(self, idx):
         img_name = os.path.join(self.root_dir, self.data[idx]['image_path'])
@@ -53,7 +54,7 @@ def _preprocess(image: Image.Image) -> torch.Tensor:
     #     image = image.resize((int(w * 640 / h), 640))
 
     image = image.resize((640, 640))
-    image = torch.from_numpy(np.asarray(image)).float()
+    image = torch.from_numpy(np.asarray(image).copy()).float()
     image = image.permute(2, 0, 1)
     return image
 
