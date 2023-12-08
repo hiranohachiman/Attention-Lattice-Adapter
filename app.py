@@ -1,4 +1,4 @@
-from predict import Predictor, model_cfg
+from validate.predict import Predictor, model_cfg
 from PIL import Image
 import gradio as gr
 
@@ -66,14 +66,13 @@ def segment_e2e(image, vis_mode):
 with gr.Blocks(
     css="""
                #submit {background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px;width: 20%;margin: 0 auto; display: block;}
- 
                 """
 ) as demo:
     gr.Markdown(
         f"<h1 style='text-align: center; margin-bottom: 1rem'>Side Adapter Network for Open-Vocabulary Semantic Segmentation</h1>"
     )
     gr.Markdown(
-        """   
+        """
     This is the demo for our conference paper : "[Side Adapter Network for Open-Vocabulary Semantic Segmentation](https://arxiv.org/abs/2302.12242)".
     """
     )

@@ -11,6 +11,8 @@ from detectron2.layers import CNNBlockBase, Conv2d
 from torch import nn
 from torch.nn import functional as F
 
+from san.model.attention import TransformerDecoder
+
 class LayerNorm(nn.Module):
     __doc__ = '\n    A LayerNorm variant, popularized by Transformers, that performs point-wise mean and\n    variance normalization over the channel dimension for inputs that have shape\n    (batch_size, channels, height, width).\n    https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa B950\n    '
 
@@ -80,10 +82,13 @@ class AddFusion(CNNBlockBase):
         weight_init.c2_xavier_fill(self.input_proj[-1])
 
     def forward(self, x: torch.Tensor, y: torch.Tensor, spatial_shape: tuple):
+        # print("add_x_shape:", x.shape) # [8, 1600, 240]
+        # print("add_y_shape:", y.shape) # [8, 768, 20, 20]
         y = F.interpolate((self.input_proj(y.contiguous())),
           size=spatial_shape,
           mode='bilinear',
           align_corners=False).permute(0, 2, 3, 1).reshape(x.shape)
+        # print("after_add_y_shape:", y.shape) # [8, 1600, 240]
         x = x + y
         return x
 
@@ -309,3 +314,20 @@ class TensorTransformation(nn.Module):
         output_tensor = self.conv(concatenated_tensor)  # [8, 768, 20, 20]
 
         return output_tensor
+
+class AttentionFusion(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.input_proj = nn.Sequential(LayerNorm(in_channels), Conv2d(in_channels,
+          out_channels,
+          kernel_size=1))
+        weight_init.c2_xavier_fill(self.input_proj[-1])
+        self.transformer = TransformerDecoder()
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor, spatial_shape: tuple):
+        y = F.interpolate((self.input_proj(y.contiguous())),
+          size=spatial_shape,
+          mode='bilinear',
+          align_corners=False).permute(0, 2, 3, 1).reshape(x.shape)
+        x = self.transformer(x, y)
+        return x

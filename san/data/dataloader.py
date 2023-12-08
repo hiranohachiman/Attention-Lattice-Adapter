@@ -68,7 +68,3 @@ def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
     #     image = image.resize((int(w * 640 / h), 640))
 
     return image
-
-train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB')
-valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB')
-test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB')

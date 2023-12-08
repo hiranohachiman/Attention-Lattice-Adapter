@@ -2,12 +2,11 @@ import torch
 import torch.nn as nn
 import math
 class TransformerDecoder(nn.Module):
-    def __init__(self, output_dim, num_hidden_layers=5):
+    def __init__(self, num_hidden_layers=3):
         super().__init__()
         self.layer = nn.ModuleList(
             [DecoderLayer() for _ in range(num_hidden_layers)]
         )
-        self.linear = nn.Linear(512, output_dim)
     def forward(
         self,
         q: torch.Tensor,
@@ -16,19 +15,18 @@ class TransformerDecoder(nn.Module):
 
         for layer in self.layer:
             hidden_states = layer(q, kv)
-        hidden_states = self.linear(hidden_states)
         return hidden_states
 
 class DecoderLayer(nn.Module):
     def __init__(self):
         super().__init__()
-        self.LayerNorm = nn.LayerNorm(512, eps=1e-12)
+        self.LayerNorm = nn.LayerNorm(240, eps=1e-12)
 
         self.attention = MultiHeadAttention()
         self.attention2 = MultiHeadAttention()
         self.attention3 = MultiHeadAttention()
         # ffn
-        self.ffn = FeedforwardNeuralNetModel(512, 1024, 512)
+        self.ffn = FeedforwardNeuralNetModel(240, 512, 240)
 
     def forward(
         self,
@@ -55,7 +53,7 @@ class MultiHeadAttention(nn.Module):
     TransformerにおけるMHA
     """
 
-    def __init__(self, hidden_size=512, num_attention_heads=8):
+    def __init__(self, hidden_size=240, num_attention_heads=8):
         super().__init__()
         self.self = SelfAttention()
         self.output = SelfOutput()
@@ -82,7 +80,7 @@ class SelfAttention(nn.Module):
     Attentionの計算
     """
 
-    def __init__(self, hidden_size=512, num_attention_heads=8):
+    def __init__(self, hidden_size=240, num_attention_heads=8):
         super().__init__()
         if hidden_size % num_attention_heads != 0:
             raise ValueError(
@@ -157,7 +155,7 @@ class SelfOutput(nn.Module):
     TransformerにおけるFF層
     """
 
-    def __init__(self,  hidden_size=512, num_attention_heads=12):
+    def __init__(self,  hidden_size=240, num_attention_heads=12):
         super().__init__()
         self.dense = nn.Linear(hidden_size, hidden_size)
         self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-12)

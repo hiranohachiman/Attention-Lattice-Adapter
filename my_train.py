@@ -53,7 +53,7 @@ from san import (
 from san.model.san import SAN
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
-from san.data.dataloader import train_dataset, valid_dataset, test_dataset
+from san.data.dataloader import CUBDataset
 
 def weight_init_kaiming(m):
     class_names = m.__class__.__name__
@@ -299,7 +299,10 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
     wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
     return model
 
-def eval(model, valid_loader, criterion, split="val", device="cuda"):
+def eval(model, valid_loader, criterion, model_path=None, split="val", device="cuda"):
+    if model_path is not None:
+        print("loading model...")
+        model = torch.load(model_path)
     model.eval()
     model = model.to(device)
     losses = []
@@ -320,27 +323,27 @@ def eval(model, valid_loader, criterion, split="val", device="cuda"):
         accuracy = 100 * correct / total
         iou = sum(ious) / len(ious)
         print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious) / len(ious)))
-        wandb.log({f"{split}_accuracy": accuracy, f"{split}_loss:": loss})
+        wandb.log({f"{split}_accuracy": accuracy, f"{split}_loss:": loss, f"{split}_iou": iou})
     return accuracy, loss, iou
 
 class EarlyStopping():
     def __init__(self, patience=5):
         self.patience = patience
         self.best_loss = float('inf')
-        self.best_model = None
+        self.best_epoch = None
         self.no_improvement_count = 0
 
-    def early_stop(self, loss, model):
+    def early_stop(self, loss, epoch):
         if loss < self.best_loss:
             self.best_loss = loss
             self.no_improvement_count = 0
-            self.best_model = model
+            self.best_epoch = epoch
         else:
             self.no_improvement_count += 1
         if self.no_improvement_count >= self.patience:
-            return True, self.best_model
+            return True, self.best_epoch
         else:
-            return False, False
+            return False, self.best_epoch
 
 
 def setup(args):
@@ -383,20 +386,22 @@ def main(args):
     criterion = nn.CrossEntropyLoss()
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
+    train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB')
+    valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB')
+    test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB')
     train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
     valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=False, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     for epoch in range(num_epochs):
-
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
         arrucacy, loss, iou = eval(model, valid_loader, criterion, split="val")
-        torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
-        early_stop, best_model = early_stopper.early_stop(loss, model)
+        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"model_epoch_{epoch}.pth"))
+        early_stop, best_epoth = early_stopper.early_stop(loss, epoch)
         if early_stop:
-            model = best_model
+            model = best_epoth
             print("early stopped...")
             break
-    arrucacy, loss, iou = eval(model, test_loader, criterion, split="test")
+    arrucacy, loss, iou = eval(model, test_loader, criterion, split="test", model_path=os.path.join(cfg.OUTPUT_DIR, f"model_epoch_{best_epoth}.pth"))
     return
 
 if __name__ == "__main__":
