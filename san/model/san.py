@@ -88,16 +88,6 @@ class SAN(nn.Module):
                                      importance_sample_ratio=cfg.MODEL.SAN.IMPORTANCE_SAMPLE_RATIO)
             model, _, preprocess = open_clip.create_model_and_transforms(cfg.MODEL.SAN.CLIP_MODEL_NAME,
                                                                          pretrained=cfg.MODEL.SAN.CLIP_PRETRAINED_NAME)
-            # def init_weights(m):
-            #     if isinstance(m, nn.Conv2d):
-            #         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            #     elif isinstance(m, nn.BatchNorm2d):
-            #         nn.init.constant_(m.weight, 1)
-            #         nn.init.constant_(m.bias, 0)
-            #     elif isinstance(m, nn.Linear):
-            #         nn.init.normal_(m.weight, 0, 0.01)
-            #         nn.init.constant_(m.bias, 0)
-            # model.apply(init_weights)
             ov_classifier = LearnableBgOvClassifier(model,
                                                     templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
             caption_embedder = PredefinedOvClassifier(model,
@@ -157,25 +147,7 @@ class SAN(nn.Module):
         logits = self.linear5(logits)
 
         attn_class_preds = self.abnclassifier(mask_preds[-1])
-        return logits, attn_class_preds
-
-    def prepare_targets(self, targets, images):
-        h_pad, w_pad = images.tensor.shape[-2:]
-        new_targets = []
-        for targets_per_image in targets:
-            gt_masks = targets_per_image.gt_masks
-            padded_masks = torch.zeros((gt_masks.shape[0], h_pad, w_pad),
-                                       dtype=gt_masks.dtype,
-                                       device=gt_masks.device)
-            padded_masks[:, :gt_masks.shape[1], :gt_masks.shape[2]] = gt_masks
-            new_targets.append({'labels': targets_per_image.gt_classes, 'masks': padded_masks})
-        return new_targets
-
-    def semantic_inference(self, mask_cls, mask_pred):
-        mask_cls = F.softmax(mask_cls, dim=-1)[..., :-1]
-        mask_pred = mask_pred.sigmoid()
-        semseg = torch.einsum('qc,qhw->chw', mask_cls, mask_pred)
-        return semseg
+        return logits, attn_class_preds, reshaped_mask_preds
 
     @property
     def device(self):

@@ -20,6 +20,9 @@ from torch.nn import init
 import torch.nn as nn
 from tqdm import tqdm
 import wandb
+import numpy as np
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.parallel")
 from detectron2.checkpoint import DetectionCheckpointer
@@ -50,7 +53,7 @@ from san import (
 from san.model.san import SAN
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
-from san.data.dataloader import train_loader, valid_loader, test_loader
+from san.data.dataloader import train_dataset, valid_dataset, test_dataset
 
 def weight_init_kaiming(m):
     class_names = m.__class__.__name__
@@ -257,16 +260,30 @@ class Trainer(DefaultTrainer):
         res = OrderedDict({k + "_TTA": v for k, v in res.items()})
         return res
 
+def get_iou(preds, masks, threshhold="mean"):
+    preds = F.interpolate(preds, size=(640, 640), mode='bilinear', align_corners=False)
+    preds = preds.squeeze(1)
+# ここでIoUを計算
+    preds = preds.cpu().numpy()
+    masks = masks.cpu().numpy()
+    if threshhold == "mean":
+        threshhold = np.mean(preds)
+    preds = preds > threshhold
+    intersection = np.logical_and(preds, masks)
+    union = np.logical_or(preds, masks)
+    iou_score = np.sum(intersection) / np.sum(union)
+    return iou_score
+
 def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, device="cuda"):
     model.train()
     model = model.to(device)
     criterion = criterion.to(device)
     main_losses = []
     attn_losses = []
-    for i, (images, captions, labels) in enumerate(tqdm(train_loader)):
+    for i, (images, _, captions, labels) in enumerate(tqdm(train_loader)):
         images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
         labels = labels.to(device)
-        logits, attn_class_preds = model(images, captions)
+        logits, attn_class_preds, _ = model(images, captions)
         main_loss = criterion(logits, labels)
         attn_loss = criterion(attn_class_preds, labels)
         main_losses.append(main_loss.item())
@@ -277,8 +294,7 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         optimizer.step()
         avg_main_loss = sum(main_losses) / len(main_losses)
         avg_attn_loss = sum(attn_losses) / len(attn_losses)
-        if (i + 1) % 100 == 0:
-            print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
+    print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
     scheduler.step()
     wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
     return model
@@ -287,22 +303,25 @@ def eval(model, valid_loader, criterion, split="val", device="cuda"):
     model.eval()
     model = model.to(device)
     losses = []
+    ious = []
     with torch.no_grad():
         total = 0
         correct = 0
-        for i, (images, captions, labels) in enumerate(tqdm(valid_loader)):
+        for i, (images, masks, captions, labels) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
-            logits, _ = model(images, captions)
+            logits, _, attn_maps = model(images, captions)
             _, predicted = torch.max(logits.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            ious.append(get_iou(attn_maps, masks))
             losses.append(criterion(logits, labels).item())
-        loss = sum(losses) / len(losses) 
+        loss = sum(losses) / len(losses)
         accuracy = 100 * correct / total
-        print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}'.format(split, 100 * correct / total, loss))
+        iou = sum(ious) / len(ious)
+        print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious) / len(ious)))
         wandb.log({f"{split}_accuracy": accuracy, f"{split}_loss:": loss})
-    return accuracy, loss
+    return accuracy, loss, iou
 
 class EarlyStopping():
     def __init__(self, patience=5):
@@ -310,7 +329,7 @@ class EarlyStopping():
         self.best_loss = float('inf')
         self.best_model = None
         self.no_improvement_count = 0
-    
+
     def early_stop(self, loss, model):
         if loss < self.best_loss:
             self.best_loss = loss
@@ -364,16 +383,20 @@ def main(args):
     criterion = nn.CrossEntropyLoss()
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
+    train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
+    valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=False, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     for epoch in range(num_epochs):
+
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
-        arrucacy, loss = eval(model, valid_loader, criterion, split="val")
+        arrucacy, loss, iou = eval(model, valid_loader, criterion, split="val")
         torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
         early_stop, best_model = early_stopper.early_stop(loss, model)
         if early_stop:
             model = best_model
             print("early stopped...")
             break
-    arrucacy, loss = eval(model, test_loader, criterion, split="test")
+    arrucacy, loss, iou = eval(model, test_loader, criterion, split="test")
     return
 
 if __name__ == "__main__":

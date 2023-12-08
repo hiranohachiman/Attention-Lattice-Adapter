@@ -24,20 +24,25 @@ class CUBDataset(Dataset):
 
     def __len__(self):
         return len(self.data)
-        # return len(self.data) // 60
+        return len(self.data) // 60
 
     def __getitem__(self, idx):
-        img_name = os.path.join(self.root_dir, self.data[idx]['image_path'])
-        image = Image.open(img_name)
+        img_path = os.path.join(self.root_dir, self.data[idx]['image_path'])
+        mask_path = os.path.join(self.root_dir, self.data[idx]['mask_path'])
+        image = Image.open(img_path)
         image = _preprocess(image)
+        mask = Image.open(mask_path)
+        mask = _preprocess(mask, color="L")
         label = torch.tensor(int(self.data[idx]['label']))
         caption = self.data[idx]['caption']
         if self.transform:
             image = self.transform(image)
 
-        return image, caption , label
+        return image, mask, caption, label
 
-def _preprocess(image: Image.Image) -> torch.Tensor:
+
+
+def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
     """
     Preprocess the input image.
     Args:
@@ -45,23 +50,25 @@ def _preprocess(image: Image.Image) -> torch.Tensor:
     Returns:
         torch.Tensor: the preprocessed image
     """
-    image = image.convert('RGB')
-    w, h = image.size
+    if color == "L":
+        image = image.convert('L')
+        image = image.resize((640, 640))
+        image = torch.from_numpy(np.asarray(image).copy()).float()
+
+    else:
+        image = image.convert('RGB')
+        image = image.resize((640, 640))
+        image = torch.from_numpy(np.asarray(image).copy()).float()
+        image = image.permute(2, 0, 1)
+
 
     # if w < h:
     #     image = image.resize((640, int(h * 640 / w)))
     # else:
     #     image = image.resize((int(w * 640 / h), 640))
 
-    image = image.resize((640, 640))
-    image = torch.from_numpy(np.asarray(image).copy()).float()
-    image = image.permute(2, 0, 1)
     return image
 
-train_dataset = CUBDataset(json_file='datasets/CUB/train_label.jsonl', root_dir='datasets/CUB')
-valid_dataset = CUBDataset(json_file='datasets/CUB/valid_label.jsonl', root_dir='datasets/CUB')
-test_dataset = CUBDataset(json_file='datasets/CUB/test_label.jsonl', root_dir='datasets/CUB')
-
-train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4)
-valid_loader = DataLoader(valid_dataset, batch_size=8, shuffle=False, num_workers=4)
-test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, num_workers=4)
+train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB')
+valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB')
+test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB')
