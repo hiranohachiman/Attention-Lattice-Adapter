@@ -23,6 +23,7 @@ import wandb
 import numpy as np
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from torchinfo import summary
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.parallel")
 from detectron2.checkpoint import DetectionCheckpointer
@@ -283,7 +284,7 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
     for i, (images, _, captions, labels) in enumerate(tqdm(train_loader)):
         images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
         labels = labels.to(device)
-        logits, attn_class_preds, _ = model(images, captions)
+        logits, attn_class_preds, _ = model(images)
         main_loss = criterion(logits, labels)
         attn_loss = criterion(attn_class_preds, labels)
         main_losses.append(main_loss.item())
@@ -313,7 +314,7 @@ def eval(model, valid_loader, criterion, model_path=None, split="val", device="c
         for i, (images, masks, captions, labels) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
-            logits, _, attn_maps = model(images, captions)
+            logits, _, attn_maps = model(images)
             _, predicted = torch.max(logits.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -345,6 +346,9 @@ class EarlyStopping():
         else:
             return False, self.best_epoch
 
+def print_trainable_layers(model):
+    for name, parameter in model.named_parameters():
+        print(f"{name}: {'trainable' if parameter.requires_grad else 'not trainable'}, {parameter.numel()} parameters")
 
 def setup(args):
     """
@@ -367,18 +371,9 @@ def setup(args):
 def main(args):
     cfg = setup(args)
     model = SAN(**SAN.from_config(cfg))
-    # if args.eval_only:
-    #     model = Trainer.build_model(cfg)
-    #     DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
-    #         cfg.MODEL.WEIGHTS, resume=args.resume
-    #     )
-    #     res = Trainer.test(cfg, model)
-    #     if cfg.TEST.AUG.ENABLED:
-    #         res.update(Trainer.test_with_TTA(cfg, model))
-    #     if comm.is_main_process():
-    #         verify_results(cfg, res)
-    #     return res
 
+    summary(model, input_size=(1, 3, 640, 640), depth=5, verbose=1, device='cuda', dtypes=[torch.float32])
+    print_trainable_layers(model)
     trainer = Trainer(cfg)
     optimizer = trainer.build_optimizer(cfg, model)
     scheduler = trainer.build_lr_scheduler(cfg, optimizer)

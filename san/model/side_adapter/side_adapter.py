@@ -150,19 +150,19 @@ class RegionwiseSideAdapterNetwork(nn.Module):
                 for tgt_idx, src_idx in x2side_map.items()
             }
         )
-        # fusion_layers = nn.ModuleDict(
-        #     {
-        #         f"layer_{tgt_idx}": build_fusion_layer(
-        #             fusion_type, input_shape[src_idx].channels, vit.num_features
-        #         )
-        #         for tgt_idx, src_idx in x2side_map.items()
-        #     }
-        # )
+        fusion_layers = nn.ModuleDict(
+            {
+                f"layer_{tgt_idx}": build_fusion_layer(
+                    fusion_type, input_shape[src_idx].channels, vit.num_features
+                )
+                for tgt_idx, src_idx in x2side_map.items()
+            }
+        )
         # build mask decoder
         return {
             "vit_model": vit,
             "num_queries": cfg.MODEL.SIDE_ADAPTER.NUM_QUERIES,
-            "fusion_layers": attn_fusions,
+            "fusion_layers": fusion_layers,
             "fusion_map": x2side_map,
             "mask_decoder": MLPMaskDecoder(
                 in_channels=vit.num_features,
@@ -180,6 +180,7 @@ class RegionwiseSideAdapterNetwork(nn.Module):
         self, image: torch.Tensor, clip_features: List[torch.Tensor]
     ) -> Dict[str, List[torch.Tensor]]:
         features = self.forward_features(image, clip_features)
+        return features
         return self.decode_masks(features)
 
     def decode_masks(
@@ -238,9 +239,9 @@ class RegionwiseSideAdapterNetwork(nn.Module):
                         .reshape(x.shape[0], x.shape[-1], h, w),
                     }
                 )
-
             if i < len(self.vit_model.blocks):
                 x = x + pos_embed
+        return x[:, -L:, ...].permute(0, 2, 1).reshape(x.shape[0], x.shape[-1], h, w)
         # print("len(outs)", len(outs)) # 2
         # print("outs[0]['query'].shape", outs[0]["query"].shape) # [8, 100, 240]
         # print("outs[0]['x'].shape", outs[0]["x"].shape) # [8, 240, 40, 40]
@@ -256,29 +257,9 @@ class RegionwiseSideAdapterNetwork(nn.Module):
         # print("block_idx", block_idx) # 0-8
         # print("fused_x.shape", x.shape) # [8, 1700, 240]
         # print("spatial_shape", spatial_shape) # [40, 40]
-        if block_idx in self.fusion_map:
-            src_idx = self.fusion_map[block_idx]
-            L = spatial_shape[0] * spatial_shape[1]
-            x = torch.cat(
-                [
-                    x[:, :-L, ...],
-                    self.fusion_layers[f"layer_{block_idx}"](
-                        x[:, -L:, ...], clip_features[src_idx], spatial_shape
-                    ),
-                ],
-                dim=1,
-            )
-            log_first_n(
-                logging.INFO,
-                f"fuse clip {src_idx} to {block_idx}",
-                len(self.fusion_map),
-            )
         # if block_idx in self.fusion_map:
         #     src_idx = self.fusion_map[block_idx]
         #     L = spatial_shape[0] * spatial_shape[1]
-        #     # print("x[:, :-L, ...]", x[:, :-L, ...].shape) # [8, 100, 240]
-        #     # print(self.fusion_layers[f"layer_{block_idx}"](x[:, -L:, ...], clip_features[src_idx], spatial_shape).shape) # [8, 1600, 240]
-        #     # print("clip_features[src_idx].shape", clip_features[src_idx].shape) # [8, 768, 40, 40]
         #     x = torch.cat(
         #         [
         #             x[:, :-L, ...],
@@ -293,5 +274,25 @@ class RegionwiseSideAdapterNetwork(nn.Module):
         #         f"fuse clip {src_idx} to {block_idx}",
         #         len(self.fusion_map),
         #     )
+        if block_idx in self.fusion_map:
+            src_idx = self.fusion_map[block_idx]
+            L = spatial_shape[0] * spatial_shape[1]
+            # print("x[:, :-L, ...]", x[:, :-L, ...].shape) # [8, 100, 240]
+            # print(self.fusion_layers[f"layer_{block_idx}"](x[:, -L:, ...], clip_features[src_idx], spatial_shape).shape) # [8, 1600, 240]
+            # print("clip_features[src_idx].shape", clip_features[src_idx].shape) # [8, 768, 40, 40]
+            x = torch.cat(
+                [
+                    x[:, :-L, ...],
+                    self.fusion_layers[f"layer_{block_idx}"](
+                        x[:, -L:, ...], clip_features[src_idx], spatial_shape
+                    ),
+                ],
+                dim=1,
+            )
+            log_first_n(
+                logging.INFO,
+                f"fuse clip {src_idx} to {block_idx}",
+                len(self.fusion_map),
+            )
         # print("after_fused_x.shape", x.shape) #[8, 1700, 240]
         return x

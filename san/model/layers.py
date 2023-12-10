@@ -239,8 +239,8 @@ class LinearLayer(nn.Module):
 class ABNClassifier(nn.Module):
     def __init__(self):
         super(ABNClassifier, self).__init__()
-        self.bn = nn.BatchNorm2d(100)
-        self.conv1 = nn.Conv2d(100, 16, 1)  # 1x1 Convolution, 入力チャンネル: 100, 出力チャンネル: 16
+        self.bn = nn.BatchNorm2d(1)
+        self.conv1 = nn.Conv2d(1, 16, 1)  # 1x1 Convolution, 入力チャンネル: 100, 出力チャンネル: 16
         self.relu = nn.ReLU()
         self.conv2 = nn.Conv2d(16, 200, 1)  # 1x1 Convolution, 入力チャンネル: 16, 出力チャンネル: 200
 
@@ -273,24 +273,24 @@ class ClipFeatureClassifier(nn.Module):
     #     return x
     def __init__(self, num_classes=200):
         super(ClipFeatureClassifier, self).__init__()
-        self.conv1 = nn.Conv2d(768, 256, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(240, 256, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(256)
-        self.conv2 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(128)
+        # self.conv2 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
+        # self.bn2 = nn.BatchNorm2d(128)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.dropout = nn.Dropout(0.25)
-        self.fc1 = nn.Linear(128, 1024)
-        self.fc2 = nn.Linear(1024, num_classes)
+        self.dropout = nn.Dropout(0.5)
+        self.fc1 = nn.Linear(256, num_classes)
+        # self.fc2 = nn.Linear(256, num_classes)
 
     def forward(self, x):
         x = self.pool(F.relu(self.bn1(self.conv1(x))))
-        x = self.pool(F.relu(self.bn2(self.conv2(x))))
+        # x = self.pool(F.relu(self.bn2(self.conv2(x))))
         x = self.global_avg_pool(x)
         x = torch.flatten(x, 1)
         x = self.dropout(x)
         x = F.relu(self.fc1(x))
-        x = self.fc2(x)
+        # x = self.fc2(x)
         return x
 
 class TensorTransformation(nn.Module):

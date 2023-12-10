@@ -37,27 +37,27 @@ class SAN(nn.Module):
         self.criterion = criterion
         self.side_adapter_network = side_adapter_network
         self.clip_visual_extractor = clip_visual_extractor
-        self.clip_rec_head = clip_rec_head
+        # self.clip_rec_head = clip_rec_head
         self.ov_classifier = ov_classifier
         self.caption_embedder = caption_embedder
-        self.linear = nn.Linear(100, 1)
-        self.linear2 = nn.Linear(768, 4096)
-        self.linear3 = nn.Linear(4096, 1024)
-        self.linear4 = nn.Linear(1024, 200)
+        # self.linear = nn.Linear(100, 1)
+        # self.linear2 = nn.Linear(768, 4096)
+        # self.linear3 = nn.Linear(4096, 1024)
+        # self.linear4 = nn.Linear(1024, 200)
         self.register_buffer('pixel_mean', torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer('pixel_std', torch.Tensor(pixel_std).view(-1, 1, 1), False)
-        self.conv1 = ConvReducer(100, 1)
-        self.conv2 = ConvReducer(100, 1)
-        self.simplecnn = ClassificationCNN()
-        self.modi = ModifiedModel()
-        self.mask_embs_classifier = SimpleClassifier()
-        self.attention = nn.MultiheadAttention(768, 8)
-        self.transformer = TransformerDecoder(200)
-        self.linear5 = LinearLayer(200, 200)
-        self.linear6 = LinearLayer(512, 200)
+        self.conv1 = ConvReducer(768, 1)
+        # self.conv2 = ConvReducer(100, 1)
+        # self.simplecnn = ClassificationCNN()
+        # self.modi = ModifiedModel()
+        # self.mask_embs_classifier = SimpleClassifier()
+        # self.attention = nn.MultiheadAttention(768, 8)
+        # self.transformer = TransformerDecoder(200)
+        # self.linear5 = LinearLayer(200, 200)
+        # self.linear6 = LinearLayer(512, 200)
         self.abnclassifier = ABNClassifier()
         self.clipfeatureclassifier = ClipFeatureClassifier()
-        self.tensortrainformer = TensorTransformation()
+        # self.tensortrainformer = TensorTransformation()
 
     @classmethod
     def from_config(cls, cfg):
@@ -118,9 +118,9 @@ class SAN(nn.Module):
                     'pixel_mean': pixel_mean,
                     'pixel_std': pixel_std}
 
-    def forward(self, images, captions):
+    def forward(self, images):
         images = [x.to(self.device) for x in images]
-        captions = [x for x in captions]
+        # captions = [x for x in captions]
         # embedded_caption = self.caption_embedder(captions)
         # print(embedded_caption.shape) # [8, 512]
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
@@ -133,21 +133,20 @@ class SAN(nn.Module):
         # print(clip_input.shape) # [8, 3, 320, 320]
         clip_image_features = self.clip_visual_extractor(clip_input)
         # [8, 768, 20, 20], [1, 8, 768]
-        mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
-        reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
-        reshaped_mask_preds = self.conv1(reshaped_mask_preds)
-        # reshaped_mask_preds = zero_below_average(reshaped_mask_preds)
-        # reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
-        # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
-        clip_image_features[9] *= reshaped_mask_preds
-        # clip_image_features[9] += reshaped_mask_preds
-        # multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
+        # print(features.shape) # [8, 240, 40, 40]
+        attn_map = self.conv1(clip_image_features[9])
+        attn_map = F.interpolate(attn_map, size=(320, 320), mode='bilinear', align_corners=False)
+        # print(clip_image_features[9].shape) # [8, 768, 20, 20]
+        # print(attn_map.shape) # [8, 1, 320, 320]
+        clip_input *= attn_map
+        clip_input += attn_map
+        features = self.side_adapter_network(images.tensor, clip_image_features)
+        # features *= clip_image_features[9]
+        logits = self.clipfeatureclassifier(features)
+        # logits = self.linear5(logits)
 
-        logits = self.clipfeatureclassifier(clip_image_features[9])
-        logits = self.linear5(logits)
-
-        attn_class_preds = self.abnclassifier(mask_preds[-1])
-        return logits, attn_class_preds, reshaped_mask_preds
+        attn_class_preds = self.abnclassifier(attn_map)
+        return logits, attn_class_preds, attn_map
 
     @property
     def device(self):
