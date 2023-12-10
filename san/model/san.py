@@ -130,17 +130,18 @@ class SAN(nn.Module):
 
         if self.asymetric_input:
             clip_input = F.interpolate(clip_input, scale_factor=self.clip_resolution, mode='bilinear')
+        h, w = clip_input.shape[-2:]
         # print(clip_input.shape) # [8, 3, 320, 320]
         clip_image_features = self.clip_visual_extractor(clip_input)
         # [8, 768, 20, 20], [1, 8, 768]
         # print(features.shape) # [8, 240, 40, 40]
         attn_map = self.conv1(clip_image_features[9])
-        attn_map = F.interpolate(attn_map, size=(320, 320), mode='bilinear', align_corners=False)
+        attn_map = F.interpolate(attn_map, size=(h, w), mode='bilinear', align_corners=False)
         # print(clip_image_features[9].shape) # [8, 768, 20, 20]
         # print(attn_map.shape) # [8, 1, 320, 320]
         clip_input *= attn_map
-        clip_input += attn_map
-        features = self.side_adapter_network(images.tensor, clip_image_features)
+        # clip_input += attn_map
+        features = self.side_adapter_network(clip_input, clip_image_features)
         # features *= clip_image_features[9]
         logits = self.clipfeatureclassifier(features)
         # logits = self.linear5(logits)

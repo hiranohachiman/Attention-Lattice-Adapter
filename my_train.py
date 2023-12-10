@@ -262,7 +262,8 @@ class Trainer(DefaultTrainer):
         return res
 
 def get_iou(preds, masks, threshhold="mean"):
-    preds = F.interpolate(preds, size=(640, 640), mode='bilinear', align_corners=False)
+    h, w = masks.shape[-2:]
+    preds = F.interpolate(preds, size=(h, w), mode='bilinear', align_corners=False)
     preds = preds.squeeze(1)
 # ここでIoUを計算
     preds = preds.cpu().numpy()
@@ -350,6 +351,26 @@ def print_trainable_layers(model):
     for name, parameter in model.named_parameters():
         print(f"{name}: {'trainable' if parameter.requires_grad else 'not trainable'}, {parameter.numel()} parameters")
 
+
+def delete_non_best_epoch_weights(directory, best_epoch):
+    """
+    指定されたディレクトリから、'best epoch'ではないモデルの重みを削除します。
+
+    :param directory: モデルの重みが保存されているディレクトリ
+    :param best_epoch: 保持したいベストエポックの番号
+    """
+    print(f"Deleting non-best epoch weights from {directory}...")
+    for filename in os.listdir(directory):
+        if not filename.endswith(".pth"):  # 重みファイルの拡張子に合わせてください
+            continue
+
+        # ファイル名からエポック番号を抽出 (ファイル名の形式に合わせて調整が必要)
+        epoch_num = int(filename.split('_')[2].split('.')[0])
+
+        # ベストエポック以外のファイルを削除
+        if epoch_num != best_epoch:
+            os.remove(os.path.join(directory, filename))
+
 def setup(args):
     """
     Create configs and perform basic setups.
@@ -387,15 +408,16 @@ def main(args):
     train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
     valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=False, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
+    best_epoth = 0
     for epoch in range(num_epochs):
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
         arrucacy, loss, iou = eval(model, valid_loader, criterion, split="val")
         torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"model_epoch_{epoch}.pth"))
         early_stop, best_epoth = early_stopper.early_stop(loss, epoch)
         if early_stop:
-            model = best_epoth
             print("early stopped...")
             break
+    delete_non_best_epoch_weights(cfg.OUTPUT_DIR, best_epoth)
     arrucacy, loss, iou = eval(model, test_loader, criterion, split="test", model_path=os.path.join(cfg.OUTPUT_DIR, f"model_epoch_{best_epoth}.pth"))
     return
 
