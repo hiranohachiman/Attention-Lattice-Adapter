@@ -11,10 +11,11 @@ from torch.nn import functional as F
 import numpy as np
 import wandb
 import math
+import loralib as lora
 
 from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier, zero_below_average, TensorTransformation
 from .clip_utils import FeatureExtractor, LearnableBgOvClassifier, PredefinedOvClassifier, RecWithAttnbiasHead, get_predefined_templates
-from .criterion import SetCriterion, cross_entropy_loss
+from .criterion import SetCriterion, cross_entropy_loss, info_nce
 from .matcher import HungarianMatcher
 from .side_adapter import build_side_adapter_network
 from .visualize import save_overlay_image_with_matplotlib, save_side_by_side_image, save_image_to_directory
@@ -40,14 +41,14 @@ class SAN(nn.Module):
         self.clip_rec_head = clip_rec_head
         self.ov_classifier = ov_classifier
         self.caption_embedder = caption_embedder
-        self.linear = nn.Linear(100, 1)
+        # self.linear = nn.Linear(100, 1)
         self.linear2 = nn.Linear(768, 4096)
         self.linear3 = nn.Linear(4096, 1024)
         self.linear4 = nn.Linear(1024, 200)
         self.register_buffer('pixel_mean', torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer('pixel_std', torch.Tensor(pixel_std).view(-1, 1, 1), False)
         self.conv1 = ConvReducer(100, 1)
-        self.conv2 = ConvReducer(100, 1)
+        # self.conv2 = nn.Conv2d(100, 1)
         self.simplecnn = ClassificationCNN()
         self.modi = ModifiedModel()
         self.mask_embs_classifier = SimpleClassifier()
@@ -58,6 +59,7 @@ class SAN(nn.Module):
         self.abnclassifier = ABNClassifier()
         self.clipfeatureclassifier = ClipFeatureClassifier()
         self.tensortrainformer = TensorTransformation()
+        self.linear = nn.Linear(512, 768)
 
     @classmethod
     def from_config(cls, cfg):
@@ -92,6 +94,17 @@ class SAN(nn.Module):
                                                     templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
             caption_embedder = PredefinedOvClassifier(model,
                                                     templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
+            def integrate_lora_to_vit(vit_model, rank=16):
+                for name, module in vit_model.named_children():
+                    if isinstance(module, nn.Linear):
+                        # LoRA層に置き換え
+                        in_features = module.in_features
+                        out_features = module.out_features
+                        setattr(vit_model, name, lora.Linear(in_features, out_features, r=rank))
+            # CLIPのVision Transformer部分にLoRAを統合
+            integrate_lora_to_vit(model.visual)
+            lora.mark_only_lora_as_trainable(model.visual)
+
             clip_visual_extractor = FeatureExtractor(model.visual,
                                                      last_layer_idx=cfg.MODEL.SAN.FEATURE_LAST_LAYER_IDX,
                                                      frozen_exclude=cfg.MODEL.SAN.CLIP_FROZEN_EXCLUDE)
@@ -123,6 +136,7 @@ class SAN(nn.Module):
         captions = [x for x in captions]
         # embedded_caption = self.caption_embedder(captions)
         # print(embedded_caption.shape) # [8, 512]
+        # embedded_caption = self.linear(embedded_caption)
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
         images = ImageList.from_tensors(images, self.size_divisibility)
         clip_input = images.tensor
@@ -140,10 +154,12 @@ class SAN(nn.Module):
         # reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
         clip_image_features[9] *= reshaped_mask_preds
+        logits = self.clipfeatureclassifier(clip_image_features[9])
+        # global average pooling
         # clip_image_features[9] += reshaped_mask_preds
         # multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
-
-        logits = self.clipfeatureclassifier(clip_image_features[9])
+        # info_loss = info_nce(multipled_clip_image_features, embedded_caption)
+        # logits = self.clipfeatureclassifier(multipled_clip_image_features)
         logits = self.linear5(logits)
 
         attn_class_preds = self.abnclassifier(mask_preds[-1])

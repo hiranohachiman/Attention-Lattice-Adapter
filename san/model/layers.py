@@ -296,8 +296,7 @@ class TensorTransformation(nn.Module):
 
     def forward(self, embedded_caption, clip_feature):
         # Tensor1を線形変換し、適切な形状に変換
-        transformed_tensor1 = self.linear(embedded_caption)  # [8, 768]
-        transformed_tensor1 = transformed_tensor1.unsqueeze(-1).unsqueeze(-1)  # [8, 768, 1, 1]
+        transformed_tensor1 = embedded_caption.unsqueeze(-1).unsqueeze(-1)  # [8, 768, 1, 1]
 
         # Tensor1をTensor2と同じサイズに拡大
         expanded_tensor1 = nn.functional.interpolate(transformed_tensor1, size=clip_feature.shape[2:], mode='nearest')  # [8, 768, 20, 20]

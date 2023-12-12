@@ -23,6 +23,7 @@ import wandb
 import numpy as np
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from PIL import Image
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.parallel")
 from detectron2.checkpoint import DetectionCheckpointer
@@ -53,7 +54,7 @@ from san import (
 from san.model.san import SAN
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
-from san.data.dataloader import train_dataset, valid_dataset, test_dataset
+from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _preprocess
 
 def weight_init_kaiming(m):
     class_names = m.__class__.__name__
@@ -288,7 +289,7 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         attn_loss = criterion(attn_class_preds, labels)
         main_losses.append(main_loss.item())
         attn_losses.append(attn_loss.item())
-        loss = main_loss + attn_loss
+        loss = main_loss + attn_loss 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -323,24 +324,64 @@ def eval(model, valid_loader, criterion, split="val", device="cuda"):
         wandb.log({f"{split}_accuracy": accuracy, f"{split}_loss:": loss})
     return accuracy, loss, iou
 
+def predict_one_shot(model_path, image_path, caption, device="cuda"):
+    model = torch.load(model_path)
+    model = model.to(device)
+    model.eval()
+    image = Image.open(image_path)
+    image = _preprocess(image)
+    image = image.to(device)
+    caption = [caption]
+    caption = model.caption_embedder(caption)
+    caption = caption.to(device)
+    logits, _, attn_map = model(image, caption)
+    # save attn_map
+    attn_map = attn_map.squeeze(1)
+    attn_map = attn_map.cpu().numpy()
+    attn_map = attn_map * 255
+    attn_map = attn_map.astype(np.uint8)
+    attn_map = Image.fromarray(attn_map)
+    attn_map.save(f"{image_path}_attn_map.png")
+    _, predicted = torch.max(logits.data, 1)
+    return predicted
+
 class EarlyStopping():
     def __init__(self, patience=5):
         self.patience = patience
         self.best_loss = float('inf')
-        self.best_model = None
+        self.best_epoch = None
         self.no_improvement_count = 0
 
-    def early_stop(self, loss, model):
+    def early_stop(self, loss, epoch):
         if loss < self.best_loss:
             self.best_loss = loss
             self.no_improvement_count = 0
-            self.best_model = model
+            self.best_epoch = epoch
         else:
             self.no_improvement_count += 1
         if self.no_improvement_count >= self.patience:
-            return True, self.best_model
+            return True, self.best_epoch
         else:
-            return False, False
+            return False, self.best_epoch
+
+def delete_non_best_epoch_weights(directory, best_epoch):
+    """
+    指定されたディレクトリから、'best epoch'ではないモデルの重みを削除します。
+
+    :param directory: モデルの重みが保存されているディレクトリ
+    :param best_epoch: 保持したいベストエポックの番号
+    """
+    print(f"Deleting non-best epoch weights from {directory}...")
+    for filename in os.listdir(directory):
+        if not filename.endswith(".pth"):  # 重みファイルの拡張子に合わせてください
+            continue
+
+        # ファイル名からエポック番号を抽出 (ファイル名の形式に合わせて調整が必要)
+        epoch_num = int(filename.split('_')[1].split('.')[0])
+
+        # ベストエポック以外のファイルを削除
+        if epoch_num != best_epoch:
+            os.remove(os.path.join(directory, filename))
 
 
 def setup(args):
@@ -390,12 +431,14 @@ def main(args):
 
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
         arrucacy, loss, iou = eval(model, valid_loader, criterion, split="val")
-        torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
-        early_stop, best_model = early_stopper.early_stop(loss, model)
+        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+        early_stop, best_epoch = early_stopper.early_stop(loss, epoch)
         if early_stop:
-            model = best_model
             print("early stopped...")
+            delete_non_best_epoch_weights(cfg.OUTPUT_DIR, best_epoch)
             break
+    model = torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth"))
+    early_stop, best_epoch = early_stopper.early_stop(loss, model)
     arrucacy, loss, iou = eval(model, test_loader, criterion, split="test")
     return
 
