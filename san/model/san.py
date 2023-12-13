@@ -19,7 +19,7 @@ from .criterion import SetCriterion, cross_entropy_loss, info_nce
 from .matcher import HungarianMatcher
 from .side_adapter import build_side_adapter_network
 from .visualize import save_overlay_image_with_matplotlib, save_side_by_side_image, save_image_to_directory
-from .attention import TransformerDecoder
+from .attention import TransformerDecoder, ViTClassifier
 
 @META_ARCH_REGISTRY.register()
 class SAN(nn.Module):
@@ -60,6 +60,7 @@ class SAN(nn.Module):
         self.clipfeatureclassifier = ClipFeatureClassifier()
         # self.tensortrainformer = TensorTransformation()
         # self.linear = nn.Linear(512, 768)
+        self.transformer = ViTClassifier(input_channels=768, num_classes=200, dim=512, depth=3, heads=8, mlp_dim=2048, dropout=0.25)
 
     @classmethod
     def from_config(cls, cfg):
@@ -114,15 +115,24 @@ class SAN(nn.Module):
                     setattr(parent, child_name, new_module)
             def integrate_lora_to_specific_layers(vit_model, rank=16):
                 layer_names = [
-                    "transformer.resblocks.9.mlp.c_fc",
-                    "transformer.resblocks.9.mlp.c_proj",
+                    # "transformer.resblocks.9.mlp.c_fc",
+                    # "transformer.resblocks.9.mlp.c_proj",
                     # "transformer.resblocks.9.attn.in_proj_weight",
                     # "transformer.resblocks.9.attn.in_proj_bias",
-                    # "transformer.resblocks.9.attn.out_proj.weight",
-                    # "transformer.resblocks.9.attn.out_proj.bias",
-                    # "transformer.resblocks.9.ln_2.weight",
-                    # "transformer.resblocks.9.ln_2.bias",
-                    # "transformer.resblocks.9.mlp.c_fc.weight"
+                    # "transformer.resblocks.9.attn.out_proj",
+                    # "transformer.resblocks.9.ln_2",
+                    # "transformer.resblocks.8.mlp.c_fc",
+                    # "transformer.resblocks.8.mlp.c_proj",
+                    # "transformer.resblocks.8.attn.in_proj_weight",
+                    # "transformer.resblocks.8.attn.in_proj_bias",
+                    # "transformer.resblocks.8.attn.out_proj",
+                    # "transformer.resblocks.8.ln_2",
+                    # "transformer.resblocks.7.mlp.c_fc",
+                    # "transformer.resblocks.7.mlp.c_proj",
+                    # "transformer.resblocks.7.attn.in_proj_weight",
+                    # "transformer.resblocks.7.attn.in_proj_bias",
+                    # "transformer.resblocks.7.attn.out_proj",
+                    # "transformer.resblocks.7.ln_2",
 
                 ]
 
