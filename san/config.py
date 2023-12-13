@@ -56,7 +56,7 @@ def add_san_config(cfg):
     # side adapter
     cfg.MODEL.SIDE_ADAPTER = CN()
     cfg.MODEL.SIDE_ADAPTER.NAME = "RegionwiseSideAdapterNetwork"
-    cfg.MODEL.SIDE_ADAPTER.VIT_NAME = "vit_w240n6d8_patch16"
+    cfg.MODEL.SIDE_ADAPTER.VIT_NAME = "vit_w144n6d8_patch16"
     cfg.MODEL.SIDE_ADAPTER.PRETRAINED = False
     cfg.MODEL.SIDE_ADAPTER.IMAGE_SIZE = 640
     cfg.MODEL.SIDE_ADAPTER.DROP_PATH_RATE = 0.0
