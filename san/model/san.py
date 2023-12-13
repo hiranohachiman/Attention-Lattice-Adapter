@@ -115,12 +115,12 @@ class SAN(nn.Module):
                     setattr(parent, child_name, new_module)
             def integrate_lora_to_specific_layers(vit_model, rank=16):
                 layer_names = [
-                    # "transformer.resblocks.9.mlp.c_fc",
-                    # "transformer.resblocks.9.mlp.c_proj",
-                    # "transformer.resblocks.9.attn.in_proj_weight",
-                    # "transformer.resblocks.9.attn.in_proj_bias",
-                    # "transformer.resblocks.9.attn.out_proj",
-                    # "transformer.resblocks.9.ln_2",
+                    "transformer.resblocks.9.mlp.c_fc",
+                    "transformer.resblocks.9.mlp.c_proj",
+                    "transformer.resblocks.9.attn.in_proj_weight",
+                    "transformer.resblocks.9.attn.in_proj_bias",
+                    "transformer.resblocks.9.attn.out_proj",
+                    "transformer.resblocks.9.ln_2",
                     # "transformer.resblocks.8.mlp.c_fc",
                     # "transformer.resblocks.8.mlp.c_proj",
                     # "transformer.resblocks.8.attn.in_proj_weight",
