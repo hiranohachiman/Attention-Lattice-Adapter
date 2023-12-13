@@ -55,6 +55,8 @@ from san.model.san import SAN
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
 from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _preprocess
+from torchinfo import summary
+import loralib as lora
 
 def weight_init_kaiming(m):
     class_names = m.__class__.__name__
@@ -284,7 +286,7 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
     for i, (images, _, captions, labels) in enumerate(tqdm(train_loader)):
         images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
         labels = labels.to(device)
-        logits, attn_class_preds, _ = model(images, captions)
+        logits, attn_class_preds, _ = model(images)
         main_loss = criterion(logits, labels)
         attn_loss = criterion(attn_class_preds, labels)
         main_losses.append(main_loss.item())
@@ -311,7 +313,7 @@ def eval(model, valid_loader, criterion, split="val", device="cuda"):
         for i, (images, masks, captions, labels) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
-            logits, _, attn_maps = model(images, captions)
+            logits, _, attn_maps = model(images)
             _, predicted = torch.max(logits.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -377,7 +379,7 @@ def delete_non_best_epoch_weights(directory, best_epoch):
             continue
 
         # ファイル名からエポック番号を抽出 (ファイル名の形式に合わせて調整が必要)
-        epoch_num = int(filename.split('_')[1].split('.')[0])
+        epoch_num = int(filename.split('_')[-1].split('.')[0])
 
         # ベストエポック以外のファイルを削除
         if epoch_num != best_epoch:
@@ -405,6 +407,7 @@ def setup(args):
 def main(args):
     cfg = setup(args)
     model = SAN(**SAN.from_config(cfg))
+    summary(model, input_size=(8,3,640,640))
     # if args.eval_only:
     #     model = Trainer.build_model(cfg)
     #     DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
@@ -427,17 +430,19 @@ def main(args):
     train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
     valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=False, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
+    best_epoch = 0
     for epoch in range(num_epochs):
-
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
         arrucacy, loss, iou = eval(model, valid_loader, criterion, split="val")
-        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+        torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+        torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
         early_stop, best_epoch = early_stopper.early_stop(loss, epoch)
         if early_stop:
             print("early stopped...")
-            delete_non_best_epoch_weights(cfg.OUTPUT_DIR, best_epoch)
             break
-    model = torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth"))
+    delete_non_best_epoch_weights(cfg.OUTPUT_DIR, best_epoch)
+    model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth")), strict=False)
+    model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{best_epoch}.pth")), strict=False)    
     early_stop, best_epoch = early_stopper.early_stop(loss, model)
     arrucacy, loss, iou = eval(model, test_loader, criterion, split="test")
     return

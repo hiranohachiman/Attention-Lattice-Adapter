@@ -38,28 +38,28 @@ class SAN(nn.Module):
         self.criterion = criterion
         self.side_adapter_network = side_adapter_network
         self.clip_visual_extractor = clip_visual_extractor
-        self.clip_rec_head = clip_rec_head
-        self.ov_classifier = ov_classifier
-        self.caption_embedder = caption_embedder
+        # self.clip_rec_head = clip_rec_head
+        # self.ov_classifier = ov_classifier
+        # self.caption_embedder = caption_embedder
         # self.linear = nn.Linear(100, 1)
-        self.linear2 = nn.Linear(768, 4096)
-        self.linear3 = nn.Linear(4096, 1024)
-        self.linear4 = nn.Linear(1024, 200)
+        # self.linear2 = nn.Linear(768, 4096)
+        # self.linear3 = nn.Linear(4096, 1024)
+        # self.linear4 = nn.Linear(1024, 200)
         self.register_buffer('pixel_mean', torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer('pixel_std', torch.Tensor(pixel_std).view(-1, 1, 1), False)
         self.conv1 = ConvReducer(100, 1)
         # self.conv2 = nn.Conv2d(100, 1)
-        self.simplecnn = ClassificationCNN()
-        self.modi = ModifiedModel()
-        self.mask_embs_classifier = SimpleClassifier()
-        self.attention = nn.MultiheadAttention(768, 8)
-        self.transformer = TransformerDecoder(200)
-        self.linear5 = LinearLayer(200, 200)
-        self.linear6 = LinearLayer(512, 200)
+        # self.simplecnn = ClassificationCNN()
+        # self.modi = ModifiedModel()
+        # self.mask_embs_classifier = SimpleClassifier()
+        # self.attention = nn.MultiheadAttention(768, 8)
+        # self.transformer = TransformerDecoder(200)
+        # self.linear5 = LinearLayer(200, 200)
+        # self.linear6 = LinearLayer(512, 200)
         self.abnclassifier = ABNClassifier()
         self.clipfeatureclassifier = ClipFeatureClassifier()
-        self.tensortrainformer = TensorTransformation()
-        self.linear = nn.Linear(512, 768)
+        # self.tensortrainformer = TensorTransformation()
+        # self.linear = nn.Linear(512, 768)
 
     @classmethod
     def from_config(cls, cfg):
@@ -95,16 +95,28 @@ class SAN(nn.Module):
             caption_embedder = PredefinedOvClassifier(model,
                                                     templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
             def integrate_lora_to_vit(vit_model, rank=16):
-                for name, module in vit_model.named_children():
+                # 変更するモジュールの名前と新しいモジュールを保持するリスト
+                to_replace = []
+
+                # モジュールを反復処理して変更すべきものを特定
+                for name, module in vit_model.named_modules():
                     if isinstance(module, nn.Linear):
-                        # LoRA層に置き換え
+                        # LoRA層への置き換えを予約
                         in_features = module.in_features
                         out_features = module.out_features
-                        setattr(vit_model, name, lora.Linear(in_features, out_features, r=rank))
+                        new_module = lora.Linear(in_features, out_features, r=rank)
+                        to_replace.append((name, new_module))
+
+                # 実際にモジュールを置き換え
+                for name, new_module in to_replace:
+                    parent_name, child_name = name.rsplit('.', 1)
+                    parent = dict(vit_model.named_modules())[parent_name]
+                    setattr(parent, child_name, new_module)
             # CLIPのVision Transformer部分にLoRAを統合
             integrate_lora_to_vit(model.visual)
             lora.mark_only_lora_as_trainable(model.visual)
-
+            for name, param in model.visual.named_parameters():
+                print(name, param.requires_grad)
             clip_visual_extractor = FeatureExtractor(model.visual,
                                                      last_layer_idx=cfg.MODEL.SAN.FEATURE_LAST_LAYER_IDX,
                                                      frozen_exclude=cfg.MODEL.SAN.CLIP_FROZEN_EXCLUDE)
@@ -131,9 +143,9 @@ class SAN(nn.Module):
                     'pixel_mean': pixel_mean,
                     'pixel_std': pixel_std}
 
-    def forward(self, images, captions):
+    def forward(self, images):
         images = [x.to(self.device) for x in images]
-        captions = [x for x in captions]
+        # captions = [x for x in captions]
         # embedded_caption = self.caption_embedder(captions)
         # print(embedded_caption.shape) # [8, 512]
         # embedded_caption = self.linear(embedded_caption)
@@ -160,7 +172,7 @@ class SAN(nn.Module):
         # multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
         # info_loss = info_nce(multipled_clip_image_features, embedded_caption)
         # logits = self.clipfeatureclassifier(multipled_clip_image_features)
-        logits = self.linear5(logits)
+        # logits = self.linear5(logits)
 
         attn_class_preds = self.abnclassifier(mask_preds[-1])
         return logits, attn_class_preds, reshaped_mask_preds

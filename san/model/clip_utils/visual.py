@@ -52,7 +52,7 @@ class FeatureExtractor(nn.Module):
             self.last_output_idx = last_layer_idx + 1
         #
         self.frozen_exclude = frozen_exclude
-        self._freeze(self.frozen_exclude)
+        # self._freeze(self.frozen_exclude)
 
     def forward(self, x: torch.Tensor):
         if self.input_patchnorm:
