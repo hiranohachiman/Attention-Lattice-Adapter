@@ -94,43 +94,51 @@ class SAN(nn.Module):
                                                     templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
             caption_embedder = PredefinedOvClassifier(model,
                                                     templates=get_predefined_templates(cfg.MODEL.SAN.CLIP_TEMPLATE_SET))
-            # def integrate_lora_to_vit(vit_model, rank=16):
-            #     # 変更するモジュールの名前と新しいモジュールを保持するリスト
-            #     to_replace = []
+            def integrate_lora_to_vit(vit_model, rank=16):
+                # 変更するモジュールの名前と新しいモジュールを保持するリスト
+                to_replace = []
 
-            #     # モジュールを反復処理して変更すべきものを特定
-            #     for name, module in vit_model.named_modules():
-            #         if isinstance(module, nn.Linear):
-            #             # LoRA層への置き換えを予約
-            #             in_features = module.in_features
-            #             out_features = module.out_features
-            #             new_module = lora.Linear(in_features, out_features, r=rank)
-            #             to_replace.append((name, new_module))
+                # モジュールを反復処理して変更すべきものを特定
+                for name, module in vit_model.named_modules():
+                    if isinstance(module, nn.Linear):
+                        # LoRA層への置き換えを予約
+                        in_features = module.in_features
+                        out_features = module.out_features
+                        new_module = lora.Linear(in_features, out_features, r=rank)
+                        to_replace.append((name, new_module))
 
-            #     # 実際にモジュールを置き換え
-            #     for name, new_module in to_replace:
-            #         parent_name, child_name = name.rsplit('.', 1)
-            #         parent = dict(vit_model.named_modules())[parent_name]
-            #         setattr(parent, child_name, new_module)
-            # def integrate_lora_to_specific_layers(vit_model, rank=16):
-            #     layer_names = [
-            #         "transformer.resblocks.9.mlp.c_fc",
-            #         "transformer.resblocks.9.mlp.c_proj"
-            #     ]
+                # 実際にモジュールを置き換え
+                for name, new_module in to_replace:
+                    parent_name, child_name = name.rsplit('.', 1)
+                    parent = dict(vit_model.named_modules())[parent_name]
+                    setattr(parent, child_name, new_module)
+            def integrate_lora_to_specific_layers(vit_model, rank=16):
+                layer_names = [
+                    "transformer.resblocks.9.mlp.c_fc",
+                    "transformer.resblocks.9.mlp.c_proj",
+                    # "transformer.resblocks.9.attn.in_proj_weight",
+                    # "transformer.resblocks.9.attn.in_proj_bias",
+                    # "transformer.resblocks.9.attn.out_proj.weight",
+                    # "transformer.resblocks.9.attn.out_proj.bias",
+                    # "transformer.resblocks.9.ln_2.weight",
+                    # "transformer.resblocks.9.ln_2.bias",
+                    # "transformer.resblocks.9.mlp.c_fc.weight"
 
-            #     for name, module in vit_model.named_modules():
-            #         if name in layer_names and isinstance(module, nn.Linear):
-            #             in_features = module.in_features
-            #             out_features = module.out_features
-            #             new_module = lora.Linear(in_features, out_features, r=rank)
-            #             parent_name, child_name = name.rsplit('.', 1)
-            #             parent = dict(vit_model.named_modules())[parent_name]
-            #             setattr(parent, child_name, new_module)
-            # # CLIPのVision Transformer部分にLoRAを統合
-            # integrate_lora_to_specific_layers(model.visual)
-            # lora.mark_only_lora_as_trainable(model.visual)
-            # for name, param in model.visual.named_parameters():
-            #     print(name, param.requires_grad)
+                ]
+
+                for name, module in vit_model.named_modules():
+                    if name in layer_names and isinstance(module, nn.Linear):
+                        in_features = module.in_features
+                        out_features = module.out_features
+                        new_module = lora.Linear(in_features, out_features, r=rank)
+                        parent_name, child_name = name.rsplit('.', 1)
+                        parent = dict(vit_model.named_modules())[parent_name]
+                        setattr(parent, child_name, new_module)
+            # CLIPのVision Transformer部分にLoRAを統合
+            integrate_lora_to_specific_layers(model.visual)
+            lora.mark_only_lora_as_trainable(model.visual)
+            for name, param in model.visual.named_parameters():
+                print(name, param.requires_grad)
             clip_visual_extractor = FeatureExtractor(model.visual,
                                                      last_layer_idx=cfg.MODEL.SAN.FEATURE_LAST_LAYER_IDX,
                                                      frozen_exclude=cfg.MODEL.SAN.CLIP_FROZEN_EXCLUDE)
