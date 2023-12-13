@@ -174,19 +174,20 @@ class SAN(nn.Module):
         clip_image_features = self.clip_visual_extractor(clip_input)
         # [8, 768, 20, 20], [1, 8, 768]
         mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
-        reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
-        reshaped_mask_preds = self.conv1(reshaped_mask_preds)
+        # reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
+        reshaped_mask_preds = self.conv1(mask_preds[-1])
         # reshaped_mask_preds = zero_below_average(reshaped_mask_preds)
-        reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
+        # reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
         clip_image_features[9] *= reshaped_mask_preds
+        print(reshaped_mask_preds.shape)
         logits = self.clipfeatureclassifier(clip_image_features[9])
         # global average pooling
         # clip_image_features[9] += reshaped_mask_preds
         # multimodal_features = self.tensortrainformer(embedded_caption, clip_image_features[9])
         # info_loss = info_nce(multipled_clip_image_features, embedded_caption)
         # logits = self.clipfeatureclassifier(multipled_clip_image_features)
-        # logits = self.linear5(logits)
+        logits = self.linear5(logits)
 
         attn_class_preds = self.abnclassifier(mask_preds[-1])
         return logits, attn_class_preds, reshaped_mask_preds
