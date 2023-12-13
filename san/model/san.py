@@ -112,8 +112,22 @@ class SAN(nn.Module):
                     parent_name, child_name = name.rsplit('.', 1)
                     parent = dict(vit_model.named_modules())[parent_name]
                     setattr(parent, child_name, new_module)
+            def integrate_lora_to_specific_layers(vit_model, rank=16):
+                layer_names = [
+                    "transformer.resblocks.9.mlp.c_fc",
+                    "transformer.resblocks.9.mlp.c_proj"
+                ]
+
+                for name, module in vit_model.named_modules():
+                    if name in layer_names and isinstance(module, nn.Linear):
+                        in_features = module.in_features
+                        out_features = module.out_features
+                        new_module = lora.Linear(in_features, out_features, r=rank)
+                        parent_name, child_name = name.rsplit('.', 1)
+                        parent = dict(vit_model.named_modules())[parent_name]
+                        setattr(parent, child_name, new_module)
             # CLIPのVision Transformer部分にLoRAを統合
-            integrate_lora_to_vit(model.visual)
+            integrate_lora_to_specific_layers(model.visual)
             lora.mark_only_lora_as_trainable(model.visual)
             for name, param in model.visual.named_parameters():
                 print(name, param.requires_grad)
