@@ -60,7 +60,7 @@ class SAN(nn.Module):
         self.clipfeatureclassifier = ClipFeatureClassifier()
         # self.tensortrainformer = TensorTransformation()
         # self.linear = nn.Linear(512, 768)
-        self.transformer = ViTClassifier(input_channels=768, num_classes=200, dim=512, depth=3, heads=8, mlp_dim=2048, dropout=0.25)
+        self.transformer = ViTClassifier(input_channels=768, num_classes=200, dim=512, depth=2, heads=8, mlp_dim=1024, dropout=0.25)
 
     @classmethod
     def from_config(cls, cfg):
