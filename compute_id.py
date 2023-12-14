@@ -49,8 +49,8 @@ model_cfg = {
 
 label_file = "datasets/CUB/id_score_sample.txt"
 config_file = "configs/san_clip_vit_res4_coco.yaml"
-model_path = "output/2023-12-13-23:34:53/epoch_48.pth"
-lora_path = "output/2023-12-13-23:34:53/lora_epoch_48.pth"
+# model_path = "output/2023-12-13-23:34:53/epoch_48.pth"
+# lora_path = "output/2023-12-13-23:34:53/lora_epoch_48.pth"
 
 def download_model(model_path: str):
     """
@@ -80,11 +80,12 @@ def setup(config_file: str, device=None):
     cfg.freeze()
     return cfg
 
-def my_load_model(config_file: str, model_path: str, lora_path: str):
+def my_load_model(config_file: str, model_path: str, lora_path: str=None):
     cfg = setup(config_file)
     model = SAN(**SAN.from_config(cfg))
     model.load_state_dict(torch.load(model_path), strict=False)
-    model.load_state_dict(torch.load(lora_path), strict=False)
+    if lora_path is not None:
+        model.load_state_dict(torch.load(lora_path), strict=False)
 
     print('Loading model from: ', model_path)
     DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
@@ -126,7 +127,15 @@ def predict_one_shot(model, image_path, output_path, device="cuda"):
     return predicted
 
 def main(args):
-    model = my_load_model(config_file, model_path, lora_path)
+    model_paths = [file for file in os.listdir(args.model_dir) if 'epoch_' in file]
+    model_path = None
+    lora_model_path = None
+    for file_name in model_paths:
+        if file_name.startswith("epoch_") and not file_name.startswith("lora_epoch_"):
+            model_path = os.path.join(args.model_dir, file_name)
+        elif file_name.startswith("lora_epoch_"):
+            lora_model_path = os.path.join(args.model_dir, file_name)
+    model = my_load_model(config_file, model_path, lora_model_path)
     metrics = PatchInsertionDeletion(
         model=model,
         batch_size=8,
@@ -139,7 +148,7 @@ def main(args):
     with open(label_file) as (f):
         lines = f.readlines()
         for line in tqdm(lines):
-            img_path, _, attn_path, output_file = get_image_data_details(line, args)
+            img_path, _, _, _ = get_image_data_details(line, args)
             label = predict_one_shot(model, img_path, args.output_dir)
             single_image = Image.open(img_path)
             single_image = _preprocess(single_image)
@@ -171,12 +180,10 @@ if __name__ == "__main__":
     #     "--predict_mode", type=str, required=True, help="select from ['bird', 'name', 'class', 'none']"
     # )
 
-    # parser.add_argument(
-    #     "--model_path", type=str, required=True, help="path to model file"
-    # )
-    # parser.add_argument(
-    #     '--img_dir', type=str, required=True, help='path to image dir.'
-    # )
+    parser.add_argument(
+        "--model_dir", type=str, required=True, help="path to model file"
+    )
+
 
     parser.add_argument(
         "--output_dir", type=str, default=None, help="path to output file."
