@@ -109,6 +109,22 @@ def get_image_data_details(line, args):
 
     return (img_path, label, attn_path, output_file)
 
+def save_attn_map(attn_map, path):
+    # バッチの最初の要素を選択し、チャンネルの次元を削除
+    attn_map = attn_map[0].squeeze()
+    # PyTorch TensorをNumPy配列に変換
+    attn_map = attn_map.cpu().numpy()
+    # attn_mapを0から1の範囲に正規化
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    # 値を0から255の範囲にスケーリング
+    attn_map = attn_map * 255
+    # 整数型にキャスト
+    attn_map = attn_map.astype(np.uint8)
+    # PIL Imageに変換
+    attn_map = Image.fromarray(attn_map)
+    # 画像を保存
+    attn_map.save(path)
+
 def predict_one_shot(model, image_path, output_path, device="cuda"):
     model = model.to(device)
     model.eval()
@@ -117,12 +133,7 @@ def predict_one_shot(model, image_path, output_path, device="cuda"):
     image = image.unsqueeze(0).to(device)
     logits, _, attn_map = model(image)
     # save attn_map
-    attn_map = attn_map.squeeze(0).squeeze(0)
-    attn_map = attn_map.cpu().detach().numpy()
-    attn_map = attn_map * 255
-    attn_map = attn_map.astype(np.uint8)
-    attn_map = Image.fromarray(attn_map).resize((640, 640))
-    attn_map.save(os.path.join(output_path, f"{os.path.basename(image_path)}_attn_map.png"))
+    save_attn_map(attn_map, os.path.join(output_path, f"{os.path.basename(image_path)}_attn_map.png"))
     _, predicted = torch.max(logits.data, 1)
     return predicted
 

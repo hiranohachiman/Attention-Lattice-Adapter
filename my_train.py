@@ -24,6 +24,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from PIL import Image
+import random
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.parallel")
 from detectron2.checkpoint import DetectionCheckpointer
@@ -262,16 +263,46 @@ class Trainer(DefaultTrainer):
         res = cls.test(cfg, model, evaluators)
         res = OrderedDict({k + "_TTA": v for k, v in res.items()})
         return res
+def save_attn_map(attn_map, path):
+    # バッチの最初の要素を選択し、チャンネルの次元を削除
+    attn_map = attn_map[0].squeeze()
+    # PyTorch TensorをNumPy配列に変換
+    attn_map = attn_map.cpu().numpy()
+    # attn_mapを0から1の範囲に正規化
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    # 値を0から255の範囲にスケーリング
+    attn_map = attn_map * 255
+    # 整数型にキャスト
+    attn_map = attn_map.astype(np.uint8)
+    # PIL Imageに変換
+    attn_map = Image.fromarray(attn_map)
+    # 画像を保存
+    attn_map.save(path)
+
+def normalize_batch(batch):
+    # バッチごとにループ
+    for i in range(batch.size(0)):
+        # i番目のバッチを取得
+        batch_i = batch[i]
+        # バッチ内の最小値と最大値を取得
+        min_val = torch.min(batch_i)
+        max_val = torch.max(batch_i)
+        # 0-1の範囲に正規化
+        batch[i] = (batch_i - min_val) / (max_val - min_val)
+    return batch
 
 def get_iou(preds, masks, threshhold="mean"):
     preds = F.interpolate(preds, size=(640, 640), mode='bilinear', align_corners=False)
+    save_attn_map(preds[0], "attn_map.png")
+    # ここでIoUを計算
+    # preds = normalize_batch(preds)
     preds = preds.squeeze(1)
-# ここでIoUを計算
     preds = preds.cpu().numpy()
     masks = masks.cpu().numpy()
     if threshhold == "mean":
         threshhold = np.mean(preds)
     preds = preds > threshhold
+    # save_attn_map(torch.tensor(preds[0], "attn_map_threshhold.png"))
     intersection = np.logical_and(preds, masks)
     union = np.logical_or(preds, masks)
     iou_score = np.sum(intersection) / np.sum(union)
@@ -445,7 +476,19 @@ def main(args):
     arrucacy, loss, iou = eval(model, test_loader, criterion, split="test")
     return
 
+def torch_fix_seed(seed=42):
+    # Python random
+    random.seed(seed)
+    # Numpy
+    np.random.seed(seed)
+    # Pytorch
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.use_deterministic_algorithms = True
+
 if __name__ == "__main__":
+    torch_fix_seed(seed=42)
     args = default_argument_parser().parse_args()
     print("Command Line Args:", args)
     launch(
