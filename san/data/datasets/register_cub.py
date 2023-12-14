@@ -1,6 +1,6 @@
 # uncompyle6 version 3.9.0
 # Python bytecode version base 3.8.0 (3413)
-# Decompiled from: Python 3.8.10 (default, Mar  8 2023, 16:27:05) 
+# Decompiled from: Python 3.8.10 (default, Mar  8 2023, 16:27:05)
 # [GCC 9.4.0]
 # Embedded file name: /home/initial/workspace/smilab23/graduation_research/SAN/san/data/datasets/register_cub.py
 # Compiled at: 2023-10-13 17:57:53
@@ -8,6 +8,7 @@
 import os, torch
 from detectron2.data import DatasetCatalog, MetadataCatalog
 from detectron2.data.datasets import load_sem_seg
+import json
 CLASS_NAMES = ('Black footed Albatross', 'Laysan Albatross', 'Sooty Albatross', 'Groove billed Ani',
                'Crested Auklet', 'Least Auklet', 'Parakeet Auklet', 'Rhinoceros Auklet',
                'Brewer Blackbird', 'Red winged Blackbird', 'Rusty Blackbird', 'Yellow headed Blackbird',
@@ -68,15 +69,18 @@ def _get_cub_meta(cat_list):
 
 def load_seg_label(seg_dir, label_file):
     dataset_dicts = []
-    with open(label_file) as (f):
+    with open(label_file) as f:
         lines = f.readlines()
         for line in lines:
+            json_obj = json.loads(line)
             record = {}
-            img_path = line.split(',')[0]
-            label = torch.tensor(int(line.split(',')[1].replace('\n', '').replace(' ', '')))
+            img_path = json_obj['image_path']
+            label = torch.tensor(int(json_obj['label']))
+            caption = json_obj['caption']
             record['file_name'] = os.path.join('datasets/CUB/', img_path.replace(' ', ''))
             record['label'] = label
-            record['sem_seg_file_name'] = os.path.join(seg_dir, img_path.replace('train/', '').replace('/', '_').replace('.jpg', '.png'))
+            record['caption'] = caption
+            record['sem_seg_file_name'] = os.path.join(seg_dir, img_path.replace('train/', '').replace("test/", "").replace('/', '_').replace('.jpg', '.png'))
             dataset_dicts.append(record)
 
     return dataset_dicts
@@ -85,17 +89,19 @@ def load_seg_label(seg_dir, label_file):
 def register_all_cub(root):
     root = os.path.join(root, 'CUB')
     meta = _get_cub_meta(CLASS_NAMES)
-    for name, image_dirname, sem_seg_dirname, label_name in (('val', 'test', 'extracted_test_segmentation', 'test_label.txt'),
-                                                             ('train', 'train', 'extracted_train_segmentation', 'train_label.txt'),
+    for name, image_dirname, sem_seg_dirname, label_name in (
+                                                             ('val', 'val', 'extracted_val_segmentation', 'valid_label.jsonl'),
+                                                            #  ('train', 'train', 'extracted_train_segmentation', 'train_label.jsonl'),
+                                                             ('train', 'train', 'extracted_train_segmentation', 'train_small.jsonl'),
                                                              ):
         image_dir = os.path.join(root, image_dirname)
         gt_dir = os.path.join(root, sem_seg_dirname)
         label_file = os.path.join(root, label_name)
         all_name = f"cub_{name}"
         DatasetCatalog.register(all_name, lambda: load_seg_label(gt_dir, label_file))
-        (MetadataCatalog.get(all_name).set)(image_root=image_dir, 
-         sem_seg_root=gt_dir, 
-         evaluator_type='sem_seg', 
+        (MetadataCatalog.get(all_name).set)(image_root=image_dir,
+         sem_seg_root=gt_dir,
+         evaluator_type='sem_seg',
          ignore_label=255, **meta)
 
 

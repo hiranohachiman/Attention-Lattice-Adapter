@@ -1,6 +1,62 @@
 import torch
 import torch.nn as nn
 import math
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
+
+class ViTClassifier(nn.Module):
+    def __init__(self, input_channels, num_classes, dim, depth, heads, mlp_dim, dropout=0.1):
+        super(ViTClassifier, self).__init__()
+
+        # Flatten the feature map
+        self.flatten = nn.Flatten(2)  # Flatten the last two dimensions
+
+        # Positional encoding
+        self.positional_encoding = nn.Parameter(torch.randn(1, 400, dim))  # 20*20 = 400
+
+        # Transformer Encoder
+        encoder_layers = TransformerEncoderLayer(d_model=dim, nhead=heads, dim_feedforward=mlp_dim, dropout=dropout)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, num_layers=depth)
+
+        # Classifier Head
+        self.to_cls_token = nn.Identity()
+        self.fc = nn.Linear(dim, num_classes)
+
+    def forward(self, x):
+        x = self.flatten(x)  # [batch_size, input_channels, 400]
+
+        # Add positional encoding
+        x += self.positional_encoding
+
+        # Pass through the transformer
+        x = self.transformer_encoder(x)
+
+        # Classifier
+        x = self.to_cls_token(x[:, 0])
+        x = self.fc(x)
+
+        return x
+
+        # Parameters for the Vision Transformer
+        # input_channels = 768  # Input channels
+        # num_classes = 200    # Number of classes for classification
+        # dim = 512            # Dimension of transformer
+        # depth = 3            # Number of transformer layers
+        # heads = 8            # Number of heads in multi-head attention
+        # mlp_dim = 2048       # Dimension of the feedforward network
+        # dropout = 0.1        # Dropout rate
+
+        # # Initialize the ViT classifier
+        # model = ViTClassifier(input_channels, num_classes, dim, depth, heads, mlp_dim, dropout)
+
+        # # Example input tensor
+        # input_tensor = torch.randn(8, 768, 20, 20)  # [batch_size, channels, height, width]
+
+        # # Forward pass
+        # output = model(input_tensor)
+        # output.shape  # The output shape should be [8, 200] indicating batch_size and number of classes
+
+
+
 class TransformerDecoder(nn.Module):
     def __init__(self, output_dim, num_hidden_layers=5):
         super().__init__()

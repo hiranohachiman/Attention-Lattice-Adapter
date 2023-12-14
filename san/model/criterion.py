@@ -1,6 +1,6 @@
 # uncompyle6 version 3.9.0
 # Python bytecode version base 3.8.0 (3413)
-# Decompiled from: Python 3.8.10 (default, Mar  8 2023, 16:27:05) 
+# Decompiled from: Python 3.8.10 (default, Mar  8 2023, 16:27:05)
 # [GCC 9.4.0]
 # Embedded file name: /home/initial/workspace/smilab23/graduation_research/SAN/san/model/criterion.py
 # Compiled at: 2023-10-12 23:28:54
@@ -11,6 +11,23 @@ from torch import nn
 from detectron2.utils.comm import get_world_size
 from detectron2.projects.point_rend.point_features import get_uncertain_point_coords_with_randomness, point_sample
 from san.utils.misc import is_dist_avail_and_initialized, nested_tensor_from_tensor_list
+from info_nce import InfoNCE
+
+def info_nce(inputs: torch.Tensor, targets: torch.Tensor):
+    """
+    Compute the info_nce loss given inputs and targets.
+
+    Parameters:
+    - inputs (torch.Tensor): The input logits from the network (unnormalized probabilities, shape: [batch_size, num_classes]).
+    - targets (torch.Tensor): The true labels for each input sample (shape: [batch_size]).
+
+    Returns:
+    - loss (torch.Tensor): The info_nce loss for the provided inputs and targets.
+    """
+    loss = InfoNCE()
+    output = loss(inputs, targets)
+    return output
+
 
 def cross_entropy_loss(inputs: torch.Tensor, targets: torch.Tensor):
     """
@@ -139,7 +156,7 @@ class SetCriterion(nn.Module):
         point_logits = point_sample(src_masks,
           point_coords,
           align_corners=False).squeeze(1)
-        losses = {'loss_mask':sigmoid_ce_loss_jit(point_logits, point_labels, num_masks), 
+        losses = {'loss_mask':sigmoid_ce_loss_jit(point_logits, point_labels, num_masks),
          'loss_dice':dice_loss_jit(point_logits, point_labels, num_masks)}
         del src_masks
         del target_masks
@@ -156,7 +173,7 @@ class SetCriterion(nn.Module):
         return (batch_idx, tgt_idx)
 
     def get_loss(self, loss, outputs, targets, indices, num_masks):
-        loss_map = {'labels':self.loss_labels, 
+        loss_map = {'labels':self.loss_labels,
          'masks':self.loss_masks}
         assert loss in loss_map, f"do you really want to compute {loss} loss?"
         return loss_map[loss](outputs, targets, indices, num_masks)

@@ -51,7 +51,7 @@ _darcs
 /projects/*/datasets
 /models
 /snippet
-
+datasets/prepair_cub/chatgpt_api.py
 .history
 .env
 

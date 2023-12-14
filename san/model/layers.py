@@ -39,6 +39,12 @@ class ConvReducer(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
+def zero_below_average(tensor):
+    # テンソルの平均値を計算
+    mean_val = tensor.mean()
+    # 平均値以下の値を0に置換
+    tensor[tensor <= mean_val] = 0
+    return tensor
 
 def patch_based_importance_avg(importance_map, patch_size=2):
     B, C, H, W = importance_map.shape
@@ -281,3 +287,24 @@ class ClipFeatureClassifier(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+
+class TensorTransformation(nn.Module):
+    def __init__(self):
+        super(TensorTransformation, self).__init__()
+        self.linear = nn.Linear(512, 768)
+        self.conv = nn.Conv2d(1536, 768, kernel_size=3, padding=1)
+
+    def forward(self, embedded_caption, clip_feature):
+        # Tensor1を線形変換し、適切な形状に変換
+        transformed_tensor1 = embedded_caption.unsqueeze(-1).unsqueeze(-1)  # [8, 768, 1, 1]
+
+        # Tensor1をTensor2と同じサイズに拡大
+        expanded_tensor1 = nn.functional.interpolate(transformed_tensor1, size=clip_feature.shape[2:], mode='nearest')  # [8, 768, 20, 20]
+
+        # 2つのテンソルを結合
+        concatenated_tensor = torch.cat([expanded_tensor1, clip_feature], dim=1)  # [8, 1536, 20, 20]
+
+        # 結合したテンソルに畳み込みを適用
+        output_tensor = self.conv(concatenated_tensor)  # [8, 768, 20, 20]
+
+        return output_tensor
