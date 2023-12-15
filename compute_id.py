@@ -16,6 +16,7 @@ import os
 import huggingface_hub
 import torch
 import numpy as np
+import torch.nn.functional as F
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
@@ -47,7 +48,7 @@ model_cfg = {
     },
 }
 
-label_file = "datasets/CUB/id_score_sample.txt"
+label_file = "datasets/CUB/test_label.txt"
 config_file = "configs/san_clip_vit_res4_coco.yaml"
 # model_path = "output/2023-12-13-23:34:53/epoch_48.pth"
 # lora_path = "output/2023-12-13-23:34:53/lora_epoch_48.pth"
@@ -109,13 +110,28 @@ def get_image_data_details(line, args):
 
     return (img_path, label, attn_path, output_file)
 
+def normalize_batch(batch):
+    # バッチごとにループ
+    for i in range(batch.size(0)):
+        # i番目のバッチを取得
+        batch_i = batch[i]
+        # バッチ内の最小値と最大値を取得
+        min_val = torch.min(batch_i)
+        max_val = torch.max(batch_i)
+        # 0-1の範囲に正規化
+        batch[i] = (batch_i - min_val) / (max_val - min_val)
+    return batch
+
 def save_attn_map(attn_map, path):
+    # アテンションマップを正規化
+    attn_map = normalize_batch(attn_map)
+    attn_map = F.interpolate(attn_map, size=(640, 640), mode='bilinear', align_corners=False)
     # バッチの最初の要素を選択し、チャンネルの次元を削除
     attn_map = attn_map[0].squeeze()
     # PyTorch TensorをNumPy配列に変換
-    attn_map = attn_map.cpu().numpy()
+    attn_map = attn_map.cpu().detach().numpy()
     # attn_mapを0から1の範囲に正規化
-    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    # attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
     # 値を0から255の範囲にスケーリング
     attn_map = attn_map * 255
     # 整数型にキャスト
