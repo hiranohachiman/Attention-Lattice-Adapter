@@ -322,7 +322,7 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         attn_loss = criterion(attn_class_preds, labels)
         main_losses.append(main_loss.item())
         attn_losses.append(attn_loss.item())
-        loss = main_loss + attn_loss * 2
+        loss = main_loss + attn_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
