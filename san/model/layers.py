@@ -234,10 +234,10 @@ class LinearLayer(nn.Module):
 class ABNClassifier(nn.Module):
     def __init__(self):
         super(ABNClassifier, self).__init__()
-        self.bn = nn.BatchNorm2d(100)
-        self.conv1 = nn.Conv2d(100, 16, 1)  # 1x1 Convolution, 入力チャンネル: 100, 出力チャンネル: 16
+        self.bn = nn.BatchNorm2d(16)
+        self.conv1 = nn.Conv2d(16, 32, 1)  # 1x1 Convolution, 入力チャンネル: 100, 出力チャンネル: 16
         self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(16, 200, 1)  # 1x1 Convolution, 入力チャンネル: 16, 出力チャンネル: 200
+        self.conv2 = nn.Conv2d(32, 200, 1)  # 1x1 Convolution, 入力チャンネル: 16, 出力チャンネル: 200
 
     def forward(self, x):
         x = self.bn(x)
@@ -268,7 +268,7 @@ class ClipFeatureClassifier(nn.Module):
     #     return x
     def __init__(self, num_classes=200):
         super(ClipFeatureClassifier, self).__init__()
-        self.conv1 = nn.Conv2d(768, 256, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(256)
         self.conv2 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
         self.bn2 = nn.BatchNorm2d(128)
@@ -308,3 +308,28 @@ class TensorTransformation(nn.Module):
         output_tensor = self.conv(concatenated_tensor)  # [8, 768, 20, 20]
 
         return output_tensor
+
+class DoubleTransposedConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding):
+        super(DoubleTransposedConv, self).__init__()
+        # 第一層の逆畳み込み
+        self.transposed_conv1 = nn.ConvTranspose2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding
+        )
+        # 第二層の逆畳み込み
+        self.transposed_conv2 = nn.ConvTranspose2d(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding
+        )
+
+    def forward(self, x):
+        x = self.transposed_conv1(x)
+        x = self.transposed_conv2(x)
+        return x

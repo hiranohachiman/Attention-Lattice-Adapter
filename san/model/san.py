@@ -13,7 +13,7 @@ import wandb
 import math
 import loralib as lora
 
-from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier, zero_below_average, TensorTransformation
+from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier, zero_below_average, TensorTransformation, DoubleTransposedConv
 from .clip_utils import FeatureExtractor, LearnableBgOvClassifier, PredefinedOvClassifier, RecWithAttnbiasHead, get_predefined_templates
 from .criterion import SetCriterion, cross_entropy_loss, info_nce
 from .matcher import HungarianMatcher
@@ -47,7 +47,7 @@ class SAN(nn.Module):
         # self.linear4 = nn.Linear(1024, 200)
         self.register_buffer('pixel_mean', torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer('pixel_std', torch.Tensor(pixel_std).view(-1, 1, 1), False)
-        self.conv1 = ConvReducer(100, 1)
+        self.conv1 = ConvReducer(16, 1)
         # self.conv2 = nn.Conv2d(100, 1)
         # self.simplecnn = ClassificationCNN()
         # self.modi = ModifiedModel()
@@ -61,6 +61,8 @@ class SAN(nn.Module):
         # self.tensortrainformer = TensorTransformation()
         # self.linear = nn.Linear(512, 768)
         self.transformer = ViTClassifier(input_channels=768, num_classes=200, dim=512, depth=3, heads=8, mlp_dim=2048, dropout=0.25)
+        self.double_transposed_conv = DoubleTransposedConv(in_channels=64, out_channels=16, kernel_size=4, stride=4, padding=0)
+        self.double_transposed_conv2 = DoubleTransposedConv(in_channels=768, out_channels=256, kernel_size=4, stride=4, padding=0)
 
     @classmethod
     def from_config(cls, cfg):
@@ -192,13 +194,19 @@ class SAN(nn.Module):
         # print(clip_input.shape) # [8, 3, 320, 320]
         clip_image_features = self.clip_visual_extractor(clip_input)
         # [8, 768, 20, 20], [1, 8, 768]
-        mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
+        mask_preds = self.side_adapter_network(images.tensor, clip_image_features)
         # reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
-        reshaped_mask_preds = self.conv1(mask_preds[-1])
+        mask_preds = self.double_transposed_conv(mask_preds)
+        # print(reshaped_mask_preds.shape) # [8, 256, 80, 80]
+        reshaped_mask_preds = self.conv1(mask_preds)
+
+
         # reshaped_mask_preds = zero_below_average(reshaped_mask_preds)
         # reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
+        clip_image_features[9] = self.double_transposed_conv2(clip_image_features[9])
         clip_image_features[9] *= reshaped_mask_preds
+
         # print(reshaped_mask_preds.shape)
         logits = self.clipfeatureclassifier(clip_image_features[9])
         # global average pooling
@@ -208,7 +216,7 @@ class SAN(nn.Module):
         # logits = self.clipfeatureclassifier(multipled_clip_image_features)
         logits = self.linear5(logits)
 
-        attn_class_preds = self.abnclassifier(mask_preds[-1])
+        attn_class_preds = self.abnclassifier(mask_preds)
         return logits, attn_class_preds, reshaped_mask_preds
 
     @property
