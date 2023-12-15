@@ -25,6 +25,7 @@ from detectron2.projects.deeplab import add_deeplab_config
 from detectron2.utils.visualizer import Visualizer, random_color
 from huggingface_hub import hf_hub_download
 from PIL import Image
+import cv2
 from torchsummary import summary
 from torchvision.transforms import functional as TF
 from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _preprocess
@@ -48,7 +49,7 @@ model_cfg = {
     },
 }
 
-label_file = "datasets/CUB/test_label.txt"
+label_file = "datasets/CUB/id_score_sample.txt"
 config_file = "configs/san_clip_vit_res4_coco.yaml"
 # model_path = "output/2023-12-13-23:34:53/epoch_48.pth"
 # lora_path = "output/2023-12-13-23:34:53/lora_epoch_48.pth"
@@ -153,6 +154,40 @@ def predict_one_shot(model, image_path, output_path, device="cuda"):
     _, predicted = torch.max(logits.data, 1)
     return predicted
 
+def remove_other_components(mask, threshold=0.3):
+    # Binarize the mask
+    binary_mask = (mask > threshold).astype(np.uint8)
+    # Detect connected components
+    num_labels, labels = cv2.connectedComponents(binary_mask)
+    # Calculate the maximum value in the original mask for each component
+    max_values = [np.max(mask[labels == i]) for i in range(num_labels)]
+    # Find the component with the largest maximum value
+    largest_max_value_component = np.argmax(max_values)
+    # second_index = np.argsort(max_values)[-2]
+    # third_index = np.argsort(max_values)[-3]
+    # print(max_values)
+    # print(largest_max_value_component)
+    # print(second_index)
+    # Create a new mask where all components other than the one with the largest max value are removed
+    first_mask = np.where(labels == largest_max_value_component, mask*3, 0)
+    # second_mask = np.where(labels == second_index, mask, 0)
+    # third_mask = np.where(labels == third_index, mask / 3, 0)
+    new_mask = first_mask
+    # new_mask = first_mask + second_mask + third_mask
+    return new_mask
+
+def apply_heat_quantization(attention, q_level: int = 10):
+    max_ = attention.max()
+    min_ = attention.min()
+
+    # quantization
+    bin = np.linspace(min_, max_, q_level)
+    # apply quantization
+    for i in range(q_level - 1):
+        attention[(attention >= bin[i]) & (attention < bin[i + 1])] = bin[i]
+
+    return attention
+
 def main(args):
     model_paths = [file for file in os.listdir(args.model_dir) if 'epoch_' in file]
     model_path = None
@@ -184,6 +219,7 @@ def main(args):
             single_attn = Image.open(os.path.join(args.output_dir, f"{os.path.basename(img_path)}_attn_map.png"))
             single_attn = _preprocess(single_attn, color="L")
             single_attn = single_attn.cpu().detach().numpy()
+            # single_attn = remove_other_components(single_attn)
             metrics.evaluate(single_image, single_attn, single_target)
             metrics.save_roc_curve(args.output_dir)
             metrics.log()
