@@ -377,7 +377,7 @@ def predict_one_shot(model_path, image_path, caption, device="cuda"):
     return predicted
 
 class EarlyStopping():
-    def __init__(self, patience=5):
+    def __init__(self, patience=10):
         self.patience = patience
         self.best_loss = float('inf')
         self.best_epoch = None

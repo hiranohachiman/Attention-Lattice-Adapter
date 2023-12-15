@@ -274,9 +274,9 @@ class ClipFeatureClassifier(nn.Module):
         self.bn2 = nn.BatchNorm2d(128)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.dropout = nn.Dropout(0.25)
-        self.fc1 = nn.Linear(128, 1024)
-        self.fc2 = nn.Linear(1024, num_classes)
+        self.dropout = nn.Dropout(0.5)
+        self.fc1 = nn.Linear(128, 256)
+        self.fc2 = nn.Linear(256, num_classes)
 
     def forward(self, x):
         x = self.pool(F.relu(self.bn1(self.conv1(x))))
