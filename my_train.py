@@ -315,6 +315,7 @@ def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
         ious.append(iou_score)
     iou = sum(ious) / len(ious)
     save_attn_map(torch.tensor(preds[0]), "attn_mask.png")
+    save_attn_map(torch.tensor(masks[0]).unsqueeze(0), "attn_gt_mask.png")
     return iou
 
 def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, device="cuda"):
