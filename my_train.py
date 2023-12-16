@@ -305,7 +305,7 @@ def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
 
     # Apply the threshold with custom true and false values
     preds = np.where(preds > threshold, true_value, false_value)
-    save_attn_map(torch.tensor(preds[0], "mask.png"))
+    save_attn_map(torch.tensor(preds[0]), "attn_mask.png")
     # Calculate Intersection over Union (IoU)
     intersection = np.logical_and(preds, masks)
     union = np.logical_or(preds, masks)
