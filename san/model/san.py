@@ -13,7 +13,7 @@ import wandb
 import math
 import loralib as lora
 
-from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier, zero_below_average, TensorTransformation
+from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier, zero_below_average, TensorTransformation, DoubleTransposedConv
 from .clip_utils import FeatureExtractor, LearnableBgOvClassifier, PredefinedOvClassifier, RecWithAttnbiasHead, get_predefined_templates
 from .criterion import SetCriterion, cross_entropy_loss, info_nce
 from .matcher import HungarianMatcher
@@ -61,6 +61,8 @@ class SAN(nn.Module):
         # self.tensortrainformer = TensorTransformation()
         # self.linear = nn.Linear(512, 768)
         self.transformer = ViTClassifier(input_channels=768, num_classes=200, dim=512, depth=3, heads=8, mlp_dim=2048, dropout=0.25)
+        self.reverse_conv = DoubleTransposedConv(100, 128)
+        self.reverse_conv2 = DoubleTransposedConv(768, 768)
 
     @classmethod
     def from_config(cls, cfg):
@@ -193,11 +195,13 @@ class SAN(nn.Module):
         # [8, 768, 20, 20], [1, 8, 768]
         mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
         # reshaped_mask_preds = patch_based_importance_avg(mask_preds[-1])
-        reshaped_mask_preds = self.conv1(mask_preds[-1])
+        reshaped_mask_preds = F.interpolate(mask_preds[-1], size=(224, 224), mode='bilinear', align_corners=False)
+        reshaped_mask_preds = self.conv1(reshaped_mask_preds)
         # reshaped_mask_preds = zero_below_average(reshaped_mask_preds)
         # reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
         # clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
-        clip_image_features[9] *= reshaped_mask_preds
+        clip_image_features[9] = F.interpolate(mask_preds[-1], size=(224, 224), mode='bilinear', align_corners=False)
+        clip_image_features[9] = clip_image_features[9] * reshaped_mask_preds
         # print(reshaped_mask_preds.shape)
         logits = self.clipfeatureclassifier(clip_image_features[9])
         # global average pooling

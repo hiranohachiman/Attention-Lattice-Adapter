@@ -8,7 +8,7 @@ from torchvision import transforms
 import numpy as np
 
 class CUBDataset(Dataset):
-    def __init__(self, json_file, root_dir, transform=None):
+    def __init__(self, json_file, root_dir, istrain=False, transform=None):
         """
         Args:
             json_file (string): JSONファイルへのパス。
@@ -69,6 +69,6 @@ def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
 
     return image
 
-train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB')
-valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB')
-test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB')
+train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB', istrain=True)
+valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB', istrain=False)
+test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB', istrain=False)

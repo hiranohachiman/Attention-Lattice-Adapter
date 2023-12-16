@@ -24,6 +24,8 @@ import numpy as np
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from PIL import Image
+import matplotlib.pyplot as plt
+
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.parallel")
 from detectron2.checkpoint import DetectionCheckpointer
@@ -262,11 +264,24 @@ class Trainer(DefaultTrainer):
         res = cls.test(cfg, model, evaluators)
         res = OrderedDict({k + "_TTA": v for k, v in res.items()})
         return res
+def save_numpy_array_as_image(array, filename):
+    # 配列の形状を確認し、(1, 640, 640) ならば (640, 640) に変更する
+    if array.shape[0] == 1:
+        array = array.squeeze(0)
+
+    # データを適切なスケールに変換する
+    array = array - array.min()
+    array = array / array.max()
+    array = (array * 255).astype(np.uint8)
+
+    # matplotlibを使用して画像を保存
+    plt.imsave(filename, array, cmap='gray')
 
 def get_iou(preds, masks, threshhold="mean"):
     preds = F.interpolate(preds, size=(640, 640), mode='bilinear', align_corners=False)
     preds = preds.squeeze(1)
 # ここでIoUを計算
+    save_numpy_array_as_image(preds[0].cpu().detach().numpy(), "preds.png")
     preds = preds.cpu().numpy()
     masks = masks.cpu().numpy()
     if threshhold == "mean":
@@ -275,6 +290,7 @@ def get_iou(preds, masks, threshhold="mean"):
     intersection = np.logical_and(preds, masks)
     union = np.logical_or(preds, masks)
     iou_score = np.sum(intersection) / np.sum(union)
+
     return iou_score
 
 def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, device="cuda"):
@@ -291,7 +307,7 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         attn_loss = criterion(attn_class_preds, labels)
         main_losses.append(main_loss.item())
         attn_losses.append(attn_loss.item())
-        loss = main_loss + attn_loss 
+        loss = main_loss + attn_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -319,6 +335,24 @@ def eval(model, valid_loader, criterion, split="val", device="cuda"):
             correct += (predicted == labels).sum().item()
             ious.append(get_iou(attn_maps, masks))
             losses.append(criterion(logits, labels).item())
+            if split == "test":
+                for i, (image, mask, attn_map) in enumerate(zip(images, masks, attn_maps)):
+                    image = image.cpu().numpy()
+                    image = np.transpose(image, (1, 2, 0))
+                    image = image * 255
+                    image = image.astype(np.uint8)
+                    image = Image.fromarray(image)
+                    image.save(f"test_images/{i}.png")
+                    mask = mask.cpu().numpy()
+                    mask = mask * 255
+                    mask = mask.astype(np.uint8)
+                    mask = Image.fromarray(mask)
+                    mask.save(f"test_images/{i}_mask.png")
+                    attn_map = attn_map.cpu().numpy()
+                    attn_map = attn_map * 255
+                    attn_map = attn_map.astype(np.uint8)
+                    attn_map = Image.fromarray(attn_map)
+                    attn_map.save(f"test_images/{i}_attn_map.png")
         loss = sum(losses) / len(losses)
         accuracy = 100 * correct / total
         iou = sum(ious) / len(ious)
@@ -442,7 +476,7 @@ def main(args):
             break
     delete_non_best_epoch_weights(cfg.OUTPUT_DIR, best_epoch)
     model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth")), strict=False)
-    model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{best_epoch}.pth")), strict=False)    
+    model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{best_epoch}.pth")), strict=False)
     early_stop, best_epoch = early_stopper.early_stop(loss, model)
     arrucacy, loss, iou = eval(model, test_loader, criterion, split="test")
     return
