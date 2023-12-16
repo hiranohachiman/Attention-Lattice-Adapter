@@ -292,26 +292,30 @@ def normalize_batch(batch):
     return batch
 
 def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
-    preds = F.interpolate(preds, size=(448, 448), mode='bilinear', align_corners=False)
+    preds = F.interpolate(preds, size=(384, 384), mode='bilinear', align_corners=False)
     save_attn_map(preds[0], "attn_map.png") # This function call is commented out as it's not defined in this snippet.
-
+    ious = []
     # Convert preds to numpy array
-    preds = preds.cpu().numpy()
+    preds = preds.squeeze(0).cpu().numpy()
     masks = masks.cpu().numpy()
+    for i in range(len(preds)):
 
+        std = np.std(preds[i])
     # Determine the threshold value
-    if threshold == "mean":
-        threshold = np.mean(preds)
+        if threshold == "mean":
+            threshold = np.mean(preds[i]) + std
 
     # Apply the threshold with custom true and false values
-    preds = np.where(preds > threshold, true_value, false_value)
-    save_attn_map(torch.tensor(preds[0]), "attn_mask.png")
-    # Calculate Intersection over Union (IoU)
-    intersection = np.logical_and(preds, masks)
-    union = np.logical_or(preds, masks)
-    iou_score = np.sum(intersection) / np.sum(union)
+        preds[i] = np.where(preds[i] > threshold, true_value, false_value)
 
-    return iou_score
+    # Calculate Intersection over Union (IoU)
+        intersection = np.logical_and(preds[i], masks[i])
+        union = np.logical_or(preds[i], masks[i])
+        iou_score = np.sum(intersection) / np.sum(union)
+        ious.append(iou_score)
+    iou = sum(ious) / len(ious)
+    save_attn_map(torch.tensor(preds[0]), "attn_mask.png")
+    return iou
 
 def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, device="cuda"):
     model.train()
@@ -334,11 +338,11 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         avg_main_loss = sum(main_losses) / len(main_losses)
         avg_attn_loss = sum(attn_losses) / len(attn_losses)
     print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
-    # scheduler.step()
+    scheduler.step()
     wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
     return model
 
-def eval(model, valid_loader, criterion, split="val", device="cuda"):
+def eval(model, valid_loader, criterion, output_path, split="val", device="cuda"):
     model.eval()
     model = model.to(device)
     losses = []
@@ -346,7 +350,7 @@ def eval(model, valid_loader, criterion, split="val", device="cuda"):
     with torch.no_grad():
         total = 0
         correct = 0
-        for i, (images, masks, captions, labels) in enumerate(tqdm(valid_loader)):
+        for i, (images, masks, captions, labels, imp_path) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
             logits, _, attn_maps = model(images)
@@ -355,6 +359,11 @@ def eval(model, valid_loader, criterion, split="val", device="cuda"):
             correct += (predicted == labels).sum().item()
             ious.append(get_iou(attn_maps, masks))
             losses.append(criterion(logits, labels).item())
+            if split == "test":
+                os.makedirs(f"{output_path}/test_attn_maps", exist_ok=True)
+                for i, attn_map in enumerate(attn_maps):
+                    attn_map = F.interpolate(attn_map.unsqueeze(0), size=(384, 384), mode='bilinear', align_corners=False)
+                    save_attn_map(attn_map, f"{output_path}/test_attn_maps/{os.path.basename(imp_path[i])}")
         loss = sum(losses) / len(losses)
         accuracy = 100 * correct / total
         iou = sum(ious) / len(ious)
@@ -441,7 +450,7 @@ def setup(args):
 def main(args):
     cfg = setup(args)
     model = SAN(**SAN.from_config(cfg))
-    summary(model, input_size=(8,3,448,448))
+    summary(model, input_size=(8,3,384,384))
     # if args.eval_only:
     #     model = Trainer.build_model(cfg)
     #     DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
@@ -467,18 +476,20 @@ def main(args):
     best_epoch = 0
     for epoch in range(num_epochs):
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
-        arrucacy, loss, iou = eval(model, valid_loader, criterion, split="val")
-        torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
-        torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
+        arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, split="val")
+        # torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+        # torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
+        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
         early_stop, best_epoch = early_stopper.early_stop(loss, epoch)
         if early_stop:
             print("early stopped...")
             break
     delete_non_best_epoch_weights(cfg.OUTPUT_DIR, best_epoch)
-    model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth")), strict=False)
-    model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{best_epoch}.pth")), strict=False)
+    # model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth")), strict=False)
+    # model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{best_epoch}.pth")), strict=False)
+    model = torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth"))
     early_stop, best_epoch = early_stopper.early_stop(loss, model)
-    arrucacy, loss, iou = eval(model, test_loader, criterion, split="test")
+    arrucacy, loss, iou = eval(model, test_loader, criterion, cfg.OUTPUT_DIR, split="test")
     return
 
 def torch_fix_seed(seed=42):

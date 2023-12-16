@@ -138,11 +138,11 @@ def main(args):
         for line in tqdm(lines):
             img_path, caption, label, attn_path, output_file = get_image_data_details(line, args)
             single_image = Image.open(img_path)
-            single_image = single_image.resize((448, 448), Image.ANTIALIAS)
+            single_image = single_image.resize((384, 384), Image.ANTIALIAS)
             single_image = np.array(single_image).transpose(2, 0, 1)
             single_target = torch.tensor(label)
             single_attn = Image.open(attn_path)
-            single_attn = single_attn.resize((448, 448), Image.ANTIALIAS)
+            single_attn = single_attn.resize((384, 384), Image.ANTIALIAS)
             single_attn = np.array(single_attn)
             single_attn = apply_heat_quantization(single_attn)
             metrics.evaluate(single_image, single_attn, caption, single_target)

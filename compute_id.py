@@ -85,12 +85,13 @@ def setup(config_file: str, device=None):
 def my_load_model(config_file: str, model_path: str, lora_path: str=None):
     cfg = setup(config_file)
     model = SAN(**SAN.from_config(cfg))
-    model.load_state_dict(torch.load(model_path), strict=False)
-    if lora_path is not None:
-        model.load_state_dict(torch.load(lora_path), strict=False)
-
+    # model.load_state_dict(torch.load(model_path), strict=False)
+    # if lora_path is not None:
+    #     model.load_state_dict(torch.load(lora_path), strict=False)
+    print(model_path)
+    model = torch.load(model_path)
     print('Loading model from: ', model_path)
-    DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
+    # DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
     print('Loaded model from: ', model_path)
 
     if torch.cuda.is_available():
@@ -126,7 +127,7 @@ def normalize_batch(batch):
 def save_attn_map(attn_map, path):
     # アテンションマップを正規化
     attn_map = normalize_batch(attn_map)
-    attn_map = F.interpolate(attn_map, size=(448, 448), mode='bilinear', align_corners=False)
+    attn_map = F.interpolate(attn_map, size=(384, 384), mode='bilinear', align_corners=False)
     # バッチの最初の要素を選択し、チャンネルの次元を削除
     attn_map = attn_map[0].squeeze()
     # PyTorch TensorをNumPy配列に変換

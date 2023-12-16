@@ -9,13 +9,14 @@ import numpy as np
 import cv2
 
 class CUBDataset(Dataset):
-    def __init__(self, json_file, root_dir, istrain: bool):
+    def __init__(self, json_file, root_dir, split="train"):
         """
         Args:
             json_file (string): JSONファイルへのパス。
             root_dir (string): 画像が格納されているディレクトリへのパス。
             transform (callable, optional): 画像に適用する変換。
         """
+        self.split = split
         self.data = []
         with open(json_file, 'r') as f:
             for line in f:
@@ -25,14 +26,14 @@ class CUBDataset(Dataset):
                     mean=[0.485, 0.456, 0.406],
                     std=[0.229, 0.224, 0.225]
                 )
-        if istrain:
+        if split == "train":
             self.transforms = _make_transform(istrain=True)
         else:
             self.transforms = _make_transform(istrain=False)
 
     def __len__(self):
         return len(self.data)
-        # return len(self.data) // 60
+        return len(self.data) // 60
 
     def __getitem__(self, idx):
         img_path = os.path.join(self.root_dir, self.data[idx]['image_path'])
@@ -47,8 +48,10 @@ class CUBDataset(Dataset):
         # to PIL.Image
         img = Image.fromarray(img)
         img = self.transforms(img)
-
-        return img, mask, caption, label
+        if self.split == "train":
+            return img, mask, caption, label
+        else:
+            return img, mask, caption, label, img_path
 
 def _make_transform(istrain: bool):
     normalize = transforms.Normalize(
@@ -58,7 +61,7 @@ def _make_transform(istrain: bool):
     if istrain:
         transform = transforms.Compose([
                             transforms.Resize((510, 510), Image.BILINEAR),
-                            transforms.RandomCrop((448, 448)),
+                            transforms.RandomCrop((384, 384)),
                             transforms.RandomHorizontalFlip(),
                             transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
                             transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
@@ -67,7 +70,7 @@ def _make_transform(istrain: bool):
                     ])
     else:
         transform = transforms.Compose([
-                            transforms.Resize((448, 448), Image.BILINEAR),
+                            transforms.Resize((384, 384), Image.BILINEAR),
                             transforms.ToTensor(),
                             normalize
                     ])
@@ -83,12 +86,12 @@ def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
     """
     if color == "L":
         image = image.convert('L')
-        image = image.resize((448, 448))
+        image = image.resize((384, 384))
         image = torch.from_numpy(np.asarray(image).copy()).float()
 
     else:
         image = image.convert('RGB')
-        image = image.resize((448, 448))
+        image = image.resize((384, 384))
         image = torch.from_numpy(np.asarray(image).copy()).float()
         image = image.permute(2, 0, 1)
 
@@ -100,6 +103,6 @@ def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
 
     return image
 
-train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB', istrain=True)
-valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB', istrain=False)
-test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB', istrain=False)
+train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB', split="train")
+valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB', split="val")
+test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB', split="test")
