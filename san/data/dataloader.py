@@ -21,6 +21,32 @@ class CUBDataset(Dataset):
                 self.data.append(json.loads(line))
         self.root_dir = root_dir
         self.transform = transform
+        self.istrain = istrain
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
+
+        if self.istrain:
+            # transforms.RandomApply([RandAugment(n=2, m=3, img_size=data_size)], p=0.1)
+            # RandAugment(n=2, m=3, img_size=sub_data_size)
+            self.transforms = transforms.Compose([
+                        transforms.Resize((510, 510), Image.BILINEAR),
+                        transforms.RandomCrop((384, 384)),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
+                        transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
+                        transforms.ToTensor(),
+                        normalize
+                ])
+        else:
+            self.transforms = transforms.Compose([
+                        transforms.Resize((510, 510), Image.BILINEAR),
+                        transforms.CenterCrop((384, 384)),
+                        transforms.ToTensor(),
+                        normalize
+                ])
+
 
     def __len__(self):
         return len(self.data)
@@ -35,10 +61,10 @@ class CUBDataset(Dataset):
         mask = _preprocess(mask, color="L")
         label = torch.tensor(int(self.data[idx]['label']))
         caption = self.data[idx]['caption']
-        if self.transform:
-            image = self.transform(image)
-
-        return image, mask, caption, label
+        if self.istrain:
+            return image, mask, caption, label
+        else:
+            return image, mask, caption, label, img_path
 
 
 

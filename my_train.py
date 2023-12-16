@@ -326,7 +326,7 @@ def eval(model, valid_loader, criterion, split="val", device="cuda"):
     with torch.no_grad():
         total = 0
         correct = 0
-        for i, (images, masks, captions, labels) in enumerate(tqdm(valid_loader)):
+        for i, (images, masks, captions, labels, img_paths) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
             logits, _, attn_maps = model(images)
@@ -342,17 +342,17 @@ def eval(model, valid_loader, criterion, split="val", device="cuda"):
                     image = image * 255
                     image = image.astype(np.uint8)
                     image = Image.fromarray(image)
-                    image.save(f"test_images/{i}.png")
+                    image.save(f"test_images/{img_paths[i]}.png")
                     mask = mask.cpu().numpy()
                     mask = mask * 255
                     mask = mask.astype(np.uint8)
                     mask = Image.fromarray(mask)
-                    mask.save(f"test_images/{i}_mask.png")
+                    mask.save(f"test_images/{img_paths[i]}_mask.png")
                     attn_map = attn_map.cpu().numpy()
                     attn_map = attn_map * 255
                     attn_map = attn_map.astype(np.uint8)
                     attn_map = Image.fromarray(attn_map)
-                    attn_map.save(f"test_images/{i}_attn_map.png")
+                    attn_map.save(f"test_images/{img_paths[i]}_attn_map.png")
         loss = sum(losses) / len(losses)
         accuracy = 100 * correct / total
         iou = sum(ious) / len(ious)
@@ -468,15 +468,13 @@ def main(args):
     for epoch in range(num_epochs):
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
         arrucacy, loss, iou = eval(model, valid_loader, criterion, split="val")
-        torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
-        torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
+        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
         early_stop, best_epoch = early_stopper.early_stop(loss, epoch)
         if early_stop:
             print("early stopped...")
             break
     delete_non_best_epoch_weights(cfg.OUTPUT_DIR, best_epoch)
-    model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth")), strict=False)
-    model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{best_epoch}.pth")), strict=False)
+    torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth"))
     early_stop, best_epoch = early_stopper.early_stop(loss, model)
     arrucacy, loss, iou = eval(model, test_loader, criterion, split="test")
     return
