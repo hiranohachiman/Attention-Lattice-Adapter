@@ -171,7 +171,6 @@ class RegionwiseSideAdapterNetwork(nn.Module):
         self, image: torch.Tensor, clip_features: List[torch.Tensor]
     ) -> Dict[str, List[torch.Tensor]]:
         features = self.forward_features(image, clip_features)
-        return features
         return self.decode_masks(features)
 
     def decode_masks(
@@ -232,7 +231,7 @@ class RegionwiseSideAdapterNetwork(nn.Module):
                 )
             if i < len(self.vit_model.blocks):
                 x = x + pos_embed
-        return x[:, -L:, ...].permute(0, 2, 1).reshape(x.shape[0], x.shape[-1], h, w)
+        # return x[:, -L:, ...].permute(0, 2, 1).reshape(x.shape[0], x.shape[-1], h, w)
         # print("len(outs)", len(outs)) # 2
         # print("outs[0]['query'].shape", outs[0]["query"].shape) # [8, 100, 240]
         # print("outs[0]['x'].shape", outs[0]["x"].shape) # [8, 240, 40, 40]

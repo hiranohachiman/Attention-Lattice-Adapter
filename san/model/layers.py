@@ -234,8 +234,8 @@ class LinearLayer(nn.Module):
 class ABNClassifier(nn.Module):
     def __init__(self):
         super(ABNClassifier, self).__init__()
-        self.bn = nn.BatchNorm2d(64)
-        self.conv1 = nn.Conv2d(64, 32, 1)  # 1x1 Convolution, 入力チャンネル: 100, 出力チャンネル: 16
+        self.bn = nn.BatchNorm2d(100)
+        self.conv1 = nn.Conv2d(100, 32, 1)  # 1x1 Convolution, 入力チャンネル: 100, 出力チャンネル: 16
         self.relu = nn.ReLU()
         self.conv2 = nn.Conv2d(32, 200, 1)  # 1x1 Convolution, 入力チャンネル: 16, 出力チャンネル: 200
 

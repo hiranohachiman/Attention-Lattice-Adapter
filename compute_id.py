@@ -126,7 +126,7 @@ def normalize_batch(batch):
 def save_attn_map(attn_map, path):
     # アテンションマップを正規化
     attn_map = normalize_batch(attn_map)
-    attn_map = F.interpolate(attn_map, size=(640, 640), mode='bilinear', align_corners=False)
+    attn_map = F.interpolate(attn_map, size=(448, 448), mode='bilinear', align_corners=False)
     # バッチの最初の要素を選択し、チャンネルの次元を削除
     attn_map = attn_map[0].squeeze()
     # PyTorch TensorをNumPy配列に変換

@@ -6,9 +6,10 @@ import json
 from PIL import Image
 from torchvision import transforms
 import numpy as np
+import cv2
 
 class CUBDataset(Dataset):
-    def __init__(self, json_file, root_dir, transform=None):
+    def __init__(self, json_file, root_dir, istrain: bool):
         """
         Args:
             json_file (string): JSONファイルへのパス。
@@ -20,7 +21,26 @@ class CUBDataset(Dataset):
             for line in f:
                 self.data.append(json.loads(line))
         self.root_dir = root_dir
-        self.transform = transform
+        normalize = transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225]
+                )
+        if istrain:
+            self.transforms = transforms.Compose([
+                        transforms.Resize((510, 510), Image.BILINEAR),
+                        transforms.RandomCrop((448, 448)),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
+                        transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
+                        transforms.ToTensor(),
+                        normalize
+                ])
+        else:
+            self.transforms = transforms.Compose([
+                        transforms.Resize((448, 448), Image.BILINEAR),
+                        transforms.ToTensor(),
+                        normalize
+                ])
 
     def __len__(self):
         return len(self.data)
@@ -29,16 +49,18 @@ class CUBDataset(Dataset):
     def __getitem__(self, idx):
         img_path = os.path.join(self.root_dir, self.data[idx]['image_path'])
         mask_path = os.path.join(self.root_dir, self.data[idx]['mask_path'])
-        image = Image.open(img_path)
-        image = _preprocess(image)
         mask = Image.open(mask_path)
         mask = _preprocess(mask, color="L")
         label = torch.tensor(int(self.data[idx]['label']))
         caption = self.data[idx]['caption']
-        if self.transform:
-            image = self.transform(image)
+        img = cv2.imread(img_path)
+        img = img[:, :, ::-1] # BGR to RGB.
 
-        return image, mask, caption, label
+        # to PIL.Image
+        img = Image.fromarray(img)
+        img = self.transforms(img)
+
+        return img, mask, caption, label
 
 
 
@@ -52,12 +74,12 @@ def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
     """
     if color == "L":
         image = image.convert('L')
-        image = image.resize((640, 640))
+        image = image.resize((448, 448))
         image = torch.from_numpy(np.asarray(image).copy()).float()
 
     else:
         image = image.convert('RGB')
-        image = image.resize((640, 640))
+        image = image.resize((448, 448))
         image = torch.from_numpy(np.asarray(image).copy()).float()
         image = image.permute(2, 0, 1)
 
@@ -69,6 +91,6 @@ def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
 
     return image
 
-train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB')
-valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB')
-test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB')
+train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB', istrain=True)
+valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB', istrain=False)
+test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB', istrain=False)

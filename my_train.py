@@ -292,7 +292,7 @@ def normalize_batch(batch):
     return batch
 
 def get_iou(preds, masks, threshhold="mean"):
-    preds = F.interpolate(preds, size=(640, 640), mode='bilinear', align_corners=False)
+    preds = F.interpolate(preds, size=(448, 448), mode='bilinear', align_corners=False)
     save_attn_map(preds[0], "attn_map.png")
     # ここでIoUを計算
     # preds = normalize_batch(preds)
@@ -436,7 +436,7 @@ def setup(args):
 def main(args):
     cfg = setup(args)
     model = SAN(**SAN.from_config(cfg))
-    summary(model, input_size=(8,3,640,640))
+    summary(model, input_size=(8,3,448,448))
     # if args.eval_only:
     #     model = Trainer.build_model(cfg)
     #     DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
