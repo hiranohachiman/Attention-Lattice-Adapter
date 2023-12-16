@@ -237,7 +237,7 @@ class Predictor(object):
         # else:
         #     image = image.resize((int(w * 640 / h), 640))
 
-        image = image.resize((640, 640))
+        image = image.resize((448, 448))
         image = torch.from_numpy(np.asarray(image)).float()
         image = image.permute(2, 0, 1)
         return image

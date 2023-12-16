@@ -28,7 +28,7 @@ from PIL import Image
 import cv2
 from torchsummary import summary
 from torchvision.transforms import functional as TF
-from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _preprocess
+from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _preprocess, _make_transform
 
 from san import add_san_config
 from san.data.datasets.register_cub import CLASS_NAMES
@@ -145,10 +145,15 @@ def save_attn_map(attn_map, path):
 def predict_one_shot(model, image_path, output_path, device="cuda"):
     model = model.to(device)
     model.eval()
-    image = Image.open(image_path)
-    image = _preprocess(image)
-    image = image.unsqueeze(0).to(device)
-    logits, _, attn_map = model(image)
+    img = cv2.imread(image_path)
+    img = img[:, :, ::-1] # BGR to RGB.
+
+    # to PIL.Image
+    img = Image.fromarray(img)
+    transform = _make_transform(istrain=False)
+    img = transform(img)
+    img = img.unsqueeze(0)
+    logits, _, attn_map = model(img)
     # save attn_map
     save_attn_map(attn_map, os.path.join(output_path, f"{os.path.basename(image_path)}_attn_map.png"))
     _, predicted = torch.max(logits.data, 1)
@@ -176,7 +181,7 @@ def remove_other_components(mask, threshold=0.3):
     # new_mask = first_mask + second_mask + third_mask
     return new_mask
 
-def apply_heat_quantization(attention, q_level: int = 10):
+def apply_heat_quantization(attention, q_level: int = 15):
     max_ = attention.max()
     min_ = attention.min()
 
@@ -212,14 +217,18 @@ def main(args):
         for line in tqdm(lines):
             img_path, _, _, _ = get_image_data_details(line, args)
             label = predict_one_shot(model, img_path, args.output_dir)
-            single_image = Image.open(img_path)
-            single_image = _preprocess(single_image)
-            single_image = single_image.cpu().detach().numpy()
+            img = cv2.imread(img_path)
+            img = img[:, :, ::-1] # BGR to RGB.
+
+            # to PIL.Image
+            img = Image.fromarray(img)
+            transform = _make_transform(istrain=False)
+            single_image = transform(img).cpu().detach().numpy()
             single_target = label
             single_attn = Image.open(os.path.join(args.output_dir, f"{os.path.basename(img_path)}_attn_map.png"))
             single_attn = _preprocess(single_attn, color="L")
             single_attn = single_attn.cpu().detach().numpy()
-            # single_attn = remove_other_components(single_attn)
+            single_attn = apply_heat_quantization(single_attn)
             metrics.evaluate(single_image, single_attn, single_target)
             metrics.save_roc_curve(args.output_dir)
             metrics.log()

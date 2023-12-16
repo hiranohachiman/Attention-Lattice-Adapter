@@ -26,21 +26,9 @@ class CUBDataset(Dataset):
                     std=[0.229, 0.224, 0.225]
                 )
         if istrain:
-            self.transforms = transforms.Compose([
-                        transforms.Resize((510, 510), Image.BILINEAR),
-                        transforms.RandomCrop((448, 448)),
-                        transforms.RandomHorizontalFlip(),
-                        transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
-                        transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
-                        transforms.ToTensor(),
-                        normalize
-                ])
+            self.transforms = _make_transform(istrain=True)
         else:
-            self.transforms = transforms.Compose([
-                        transforms.Resize((448, 448), Image.BILINEAR),
-                        transforms.ToTensor(),
-                        normalize
-                ])
+            self.transforms = _make_transform(istrain=False)
 
     def __len__(self):
         return len(self.data)
@@ -62,7 +50,28 @@ class CUBDataset(Dataset):
 
         return img, mask, caption, label
 
-
+def _make_transform(istrain: bool):
+    normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
+    if istrain:
+        transform = transforms.Compose([
+                            transforms.Resize((510, 510), Image.BILINEAR),
+                            transforms.RandomCrop((448, 448)),
+                            transforms.RandomHorizontalFlip(),
+                            transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
+                            transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
+                            transforms.ToTensor(),
+                            normalize
+                    ])
+    else:
+        transform = transforms.Compose([
+                            transforms.Resize((448, 448), Image.BILINEAR),
+                            transforms.ToTensor(),
+                            normalize
+                    ])
+    return transform
 
 def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
     """

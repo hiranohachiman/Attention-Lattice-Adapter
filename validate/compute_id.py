@@ -98,6 +98,18 @@ def get_attn_dir(args):
     attn_dir = args.output_dir.replace("id", "")
     return attn_dir
 
+def apply_heat_quantization(attention, q_level: int = 3):
+    max_ = attention.max()
+    min_ = attention.min()
+
+    # quantization
+    bin = np.linspace(min_, max_, q_level)
+    # apply quantization
+    for i in range(q_level - 1):
+        attention[(attention >= bin[i]) & (attention < bin[i + 1])] = bin[i]
+
+    return attention
+
 def get_image_data_details(line, args):
     line = json.loads(line)
     img_path = line["image_path"]
@@ -114,9 +126,9 @@ def main(args):
     model = load_model(config_file, args.model_path)
     metrics = PatchInsertionDeletion(
         model=model,
-        batch_size=1,
+        batch_size=8,
         patch_size=1,
-        step=4096,
+        step=1024,
         dataset="str",
         device="cuda",)
 
@@ -126,13 +138,13 @@ def main(args):
         for line in tqdm(lines):
             img_path, caption, label, attn_path, output_file = get_image_data_details(line, args)
             single_image = Image.open(img_path)
-            single_image = single_image.resize((640, 640), Image.ANTIALIAS)
+            single_image = single_image.resize((448, 448), Image.ANTIALIAS)
             single_image = np.array(single_image).transpose(2, 0, 1)
             single_target = torch.tensor(label)
             single_attn = Image.open(attn_path)
-            single_attn = single_attn.resize((640, 640), Image.ANTIALIAS)
+            single_attn = single_attn.resize((448, 448), Image.ANTIALIAS)
             single_attn = np.array(single_attn)
-
+            single_attn = apply_heat_quantization(single_attn)
             metrics.evaluate(single_image, single_attn, caption, single_target)
             metrics.save_roc_curve(args.output_dir)
             x += 1

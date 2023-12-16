@@ -291,21 +291,26 @@ def normalize_batch(batch):
         batch[i] = (batch_i - min_val) / (max_val - min_val)
     return batch
 
-def get_iou(preds, masks, threshhold="mean"):
+def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
     preds = F.interpolate(preds, size=(448, 448), mode='bilinear', align_corners=False)
-    save_attn_map(preds[0], "attn_map.png")
-    # ここでIoUを計算
-    # preds = normalize_batch(preds)
-    preds = preds.squeeze(1)
+    save_attn_map(preds[0], "attn_map.png") # This function call is commented out as it's not defined in this snippet.
+
+    # Convert preds to numpy array
     preds = preds.cpu().numpy()
     masks = masks.cpu().numpy()
-    if threshhold == "mean":
-        threshhold = np.mean(preds)
-    preds = preds > threshhold
-    # save_attn_map(torch.tensor(preds[0], "attn_map_threshhold.png"))
+
+    # Determine the threshold value
+    if threshold == "mean":
+        threshold = np.mean(preds)
+
+    # Apply the threshold with custom true and false values
+    preds = np.where(preds > threshold, true_value, false_value)
+    save_attn_map(torch.tensor(preds[0], "mask.png"))
+    # Calculate Intersection over Union (IoU)
     intersection = np.logical_and(preds, masks)
     union = np.logical_or(preds, masks)
     iou_score = np.sum(intersection) / np.sum(union)
+
     return iou_score
 
 def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, device="cuda"):
@@ -329,7 +334,7 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         avg_main_loss = sum(main_losses) / len(main_losses)
         avg_attn_loss = sum(attn_losses) / len(attn_losses)
     print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
-    scheduler.step()
+    # scheduler.step()
     wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
     return model
 
@@ -457,7 +462,7 @@ def main(args):
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
     train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
-    valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=False, num_workers=4)
+    valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     best_epoch = 0
     for epoch in range(num_epochs):
