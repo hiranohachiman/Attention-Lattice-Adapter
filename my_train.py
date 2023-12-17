@@ -318,7 +318,7 @@ def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
     save_attn_map(torch.tensor(masks[0]).unsqueeze(0), "attn_gt_mask.png")
     return iou
 
-def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, device="cuda"):
+def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask, device="cuda"):
     model.train()
     model = model.to(device)
     criterion = criterion.to(device)
@@ -327,25 +327,30 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
     for i, (images, _, captions, labels) in enumerate(tqdm(train_loader)):
         images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
         labels = labels.to(device)
-        logits, attn_class_preds, _ = model(images, with_mask=False)
+        logits, attn_class_preds, _ = model(images, with_mask=with_mask)
         main_loss = criterion(logits, labels)
-        # attn_loss = criterion(attn_class_preds, labels)
+        loss = main_loss
+        if with_mask:
+            attn_loss = criterion(attn_class_preds, labels)
+            attn_losses.append(attn_loss.item())
+            loss += attn_loss / 15
         main_losses.append(main_loss.item())
-        # attn_losses.append(attn_loss.item())
         # loss = main_loss + attn_loss / 15
         loss = main_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         avg_main_loss = sum(main_losses) / len(main_losses)
-        # avg_attn_loss = sum(attn_losses) / len(attn_losses)
-        avg_attn_loss = 0
-    print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
+        avg_attn_loss = sum(attn_losses) / len(attn_losses)
+    if with_mask:
+        print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
+    else:
+        print('Epoch [{}/{}], main_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
     scheduler.step()
     wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
     return model
 
-def eval(model, valid_loader, criterion, output_path, split="val", device="cuda"):
+def eval(model, valid_loader, criterion, output_path, with_mask, split="val", device="cuda"):
     model.eval()
     model = model.to(device)
     losses = []
@@ -356,23 +361,26 @@ def eval(model, valid_loader, criterion, output_path, split="val", device="cuda"
         for i, (images, masks, captions, labels, imp_path) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
-            logits ,_, _= model(images, with_mask=False)
+            if with_mask:
+                logits ,_, attn_maps = model(images, with_mask=with_mask)
+                ious.append(get_iou(attn_maps, masks))
+            logits ,_, attn_maps = model(images, with_mask=with_mask)
             _, predicted = torch.max(logits.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-            # ious.append(get_iou(attn_maps, masks))
             losses.append(criterion(logits, labels).item())
-            # if split == "test":
-            #     os.makedirs(f"{output_path}/test_attn_maps", exist_ok=True)
-            #     for i, attn_map in enumerate(attn_maps):
-            #         attn_map = F.interpolate(attn_map.unsqueeze(0), size=(384, 384), mode='bilinear', align_corners=False)
-            #         save_attn_map(attn_map, f"{output_path}/test_attn_maps/{os.path.basename(imp_path[i])}")
+            if split == "test":
+                os.makedirs(f"{output_path}/test_attn_maps", exist_ok=True)
+                for i, attn_map in enumerate(attn_maps):
+                    attn_map = F.interpolate(attn_map.unsqueeze(0), size=(384, 384), mode='bilinear', align_corners=False)
+                    save_attn_map(attn_map, f"{output_path}/test_attn_maps/{os.path.basename(imp_path[i])}")
         loss = sum(losses) / len(losses)
         accuracy = 100 * correct / total
-        # iou = sum(ious) / len(ious)
-        # print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious) / len(ious)))
-
-        print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious)))
+        if with_mask:
+            iou = sum(ious) / len(ious)
+            print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious) / len(ious)))
+        else:
+            print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious)))
         wandb.log({f"{split}_accuracy": accuracy, f"{split}_loss:": loss})
     return accuracy, loss, None
 
@@ -396,7 +404,7 @@ def predict_one_shot(model_path, image_path, caption, device="cuda"):
     return predicted
 
 class EarlyStopping():
-    def __init__(self, patience=10):
+    def __init__(self, patience=5):
         self.patience = patience
         self.best_loss = float('inf')
         self.best_epoch = None
@@ -473,19 +481,24 @@ def main(args):
     scheduler = trainer.build_lr_scheduler(cfg, optimizer)
     trainer.resume_or_load(resume=args.resume)
     criterion = nn.CrossEntropyLoss()
+    pretrain_epoch = 60
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
     train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
     valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     best_epoch = 0
-    for epoch in range(num_epochs):
-        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs)
-        arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, split="val")
+    for epoch in range(pretrain_epoch):
+        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, False, num_epochs)
+        arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, False, split="val")
         # torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
         # torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
         torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+    for epoch in range(pretrain_epoch, num_epochs):
+        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, True, num_epochs)
+        arrucacy, loss, iou = eval(model, valid_loader, criterion,  cfg.OUTPUT_DIR, True, split="val")
         early_stop, best_epoch = early_stopper.early_stop(loss, epoch)
+        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
         if early_stop:
             print("early stopped...")
             break
@@ -493,8 +506,7 @@ def main(args):
     # model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth")), strict=False)
     # model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{best_epoch}.pth")), strict=False)
     model = torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth"))
-    early_stop, best_epoch = early_stopper.early_stop(loss, model)
-    arrucacy, loss, iou = eval(model, test_loader, criterion, cfg.OUTPUT_DIR, split="test")
+    arrucacy, loss, iou = eval(model, test_loader, criterion, cfg.OUTPUT_DIR, True, split="test")
     return
 
 def torch_fix_seed(seed=42):
