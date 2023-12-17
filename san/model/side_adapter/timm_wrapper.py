@@ -47,7 +47,7 @@ class PatchEmbed(nn.Module):
 @register_model
 def vit_w64n6d8_patch32(pretrained=False, **kwargs):
     assert not pretrained
-    model_kwargs = dict(patch_size=32, embed_dim=64, depth=8, num_heads=4, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=64, depth=8, num_heads=4, **kwargs)
     model = _create_vision_transformer(
         "vit_tiny_patch16_224_in21k", pretrained=pretrained, **model_kwargs
     )

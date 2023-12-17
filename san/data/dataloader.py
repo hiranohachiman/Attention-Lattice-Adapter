@@ -28,8 +28,10 @@ class CUBDataset(Dataset):
                 )
         if split == "train":
             self.transforms = _make_transform(istrain=True)
+            self.transforms_for_mask = _make_transform_for_mask(istrain=True)
         else:
             self.transforms = _make_transform(istrain=False)
+            self.transforms_for_mask = _make_transform_for_mask(istrain=False)
 
     def __len__(self):
         return len(self.data)
@@ -38,8 +40,9 @@ class CUBDataset(Dataset):
     def __getitem__(self, idx):
         img_path = os.path.join(self.root_dir, self.data[idx]['image_path'])
         mask_path = os.path.join(self.root_dir, self.data[idx]['mask_path'])
-        mask = Image.open(mask_path)
-        mask = _preprocess(mask, color="L")
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        mask = Image.fromarray(mask)
+        mask = self.transforms_for_mask(mask)
         label = torch.tensor(int(self.data[idx]['label']))
         caption = self.data[idx]['caption']
         img = cv2.imread(img_path)
@@ -70,11 +73,37 @@ def _make_transform(istrain: bool):
                     ])
     else:
         transform = transforms.Compose([
-                            transforms.Resize((384, 384), Image.BILINEAR),
+                            transforms.Resize((510, 510), Image.BILINEAR),
+                            transforms.CenterCrop((384, 384)),
                             transforms.ToTensor(),
                             normalize
                     ])
     return transform
+
+def _make_transform_for_mask(istrain: bool):
+    normalize = transforms.Normalize(
+            mean=[0.5],
+            std=[0.5]
+        )
+    if istrain:
+        transform_for_mask = transforms.Compose([
+                        transforms.Grayscale(num_output_channels=1),  # カラー画像をグレースケールに変換
+                        transforms.Resize((510, 510), Image.BILINEAR),
+                        transforms.RandomCrop((384, 384)),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
+                        transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
+                        transforms.ToTensor()
+                    ])
+    else:
+        transform_for_mask = transforms.Compose([
+                                transforms.Grayscale(num_output_channels=1),  # カラー画像をグレースケールに変換
+                                transforms.Resize((510, 510), Image.BILINEAR),
+                                transforms.CenterCrop((384, 384)),
+                                transforms.ToTensor()
+                            ])
+    return transform_for_mask
+
 
 def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
     """

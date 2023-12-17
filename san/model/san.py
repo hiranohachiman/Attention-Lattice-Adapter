@@ -189,8 +189,8 @@ class SAN(nn.Module):
         clip_input = images.tensor
         # print(clip_input.shape) # [8, 3, 640, 640]
 
-        if self.asymetric_input:
-            clip_input = F.interpolate(clip_input, scale_factor=self.clip_resolution, mode='bilinear')
+        # if self.asymetric_input:
+        #     clip_input = F.interpolate(clip_input, scale_factor=self.clip_resolution, mode='bilinear')
         # print(clip_input.shape) # [8, 3, 320, 320]
         clip_image_features = self.clip_visual_extractor(clip_input)
         # [8, 768, 20, 20], [1, 8, 768]
