@@ -182,7 +182,7 @@ def remove_other_components(mask, threshold=0.3):
     # new_mask = first_mask + second_mask + third_mask
     return new_mask
 
-def apply_heat_quantization(attention, q_level: int = 15):
+def apply_heat_quantization(attention, q_level: int = 2):
     max_ = attention.max()
     min_ = attention.min()
 
@@ -224,7 +224,6 @@ def main(args):
             img = Image.fromarray(img)
             transform = _make_transform(istrain=False)
             single_image = transform(img).cpu().numpy()
-
             single_target = label
 
             single_attn = cv2.imread(os.path.join(args.output_dir, f"{os.path.basename(img_path)}_attn_map.png"), cv2.IMREAD_GRAYSCALE)
