@@ -28,7 +28,7 @@ from PIL import Image
 import cv2
 from torchsummary import summary
 from torchvision.transforms import functional as TF
-from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _preprocess, _make_transform
+from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _preprocess, _make_transform, _make_transform_for_mask
 
 from san import add_san_config
 from san.data.datasets.register_cub import CLASS_NAMES
@@ -208,7 +208,7 @@ def main(args):
         model=model,
         batch_size=8,
         patch_size=1,
-        step=8192,
+        step=3072,
         dataset="str",
         device="cuda",)
 
@@ -217,22 +217,24 @@ def main(args):
         lines = f.readlines()
         for line in tqdm(lines):
             img_path, _, _, _ = get_image_data_details(line, args)
-            label = predict_one_shot(model, img_path, args.output_dir)
+            with torch.no_grad():
+                label = predict_one_shot(model, img_path, args.output_dir)
             img = cv2.imread(img_path)
             img = img[:, :, ::-1] # BGR to RGB.
-
-            # to PIL.Image
             img = Image.fromarray(img)
             transform = _make_transform(istrain=False)
-            single_image = transform(img).cpu().detach().numpy()
+            single_image = transform(img).cpu().numpy()
+
             single_target = label
-            single_attn = Image.open(os.path.join(args.output_dir, f"{os.path.basename(img_path)}_attn_map.png"))
-            single_attn = _preprocess(single_attn, color="L")
-            single_attn = single_attn.cpu().detach().numpy()
+
+            single_attn = cv2.imread(os.path.join(args.output_dir, f"{os.path.basename(img_path)}_attn_map.png"), cv2.IMREAD_GRAYSCALE)
+            single_attn = Image.fromarray(single_attn)
+            transform_for_mask = _make_transform_for_mask(istrain=False)
+            single_attn = transform_for_mask(single_attn).cpu().numpy()
             single_attn = apply_heat_quantization(single_attn)
             metrics.evaluate(single_image, single_attn, single_target)
             metrics.save_roc_curve(args.output_dir)
-            metrics.log()
+
             x += 1
             if x % 50 == 0:
                 print("total_insertion:", metrics.total_insertion)
