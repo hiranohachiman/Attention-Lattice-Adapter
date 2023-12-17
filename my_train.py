@@ -327,17 +327,19 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
     for i, (images, _, captions, labels) in enumerate(tqdm(train_loader)):
         images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
         labels = labels.to(device)
-        logits, attn_class_preds, _ = model(images)
+        logits, attn_class_preds, _ = model(images, with_mask=False)
         main_loss = criterion(logits, labels)
-        attn_loss = criterion(attn_class_preds, labels)
+        # attn_loss = criterion(attn_class_preds, labels)
         main_losses.append(main_loss.item())
-        attn_losses.append(attn_loss.item())
-        loss = main_loss + attn_loss / 15
+        # attn_losses.append(attn_loss.item())
+        # loss = main_loss + attn_loss / 15
+        loss = main_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         avg_main_loss = sum(main_losses) / len(main_losses)
-        avg_attn_loss = sum(attn_losses) / len(attn_losses)
+        # avg_attn_loss = sum(attn_losses) / len(attn_losses)
+        avg_attn_loss = 0
     print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
     scheduler.step()
     wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
@@ -354,23 +356,25 @@ def eval(model, valid_loader, criterion, output_path, split="val", device="cuda"
         for i, (images, masks, captions, labels, imp_path) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
-            logits, _, attn_maps = model(images)
+            logits ,_, _= model(images, with_mask=False)
             _, predicted = torch.max(logits.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-            ious.append(get_iou(attn_maps, masks))
+            # ious.append(get_iou(attn_maps, masks))
             losses.append(criterion(logits, labels).item())
-            if split == "test":
-                os.makedirs(f"{output_path}/test_attn_maps", exist_ok=True)
-                for i, attn_map in enumerate(attn_maps):
-                    attn_map = F.interpolate(attn_map.unsqueeze(0), size=(384, 384), mode='bilinear', align_corners=False)
-                    save_attn_map(attn_map, f"{output_path}/test_attn_maps/{os.path.basename(imp_path[i])}")
+            # if split == "test":
+            #     os.makedirs(f"{output_path}/test_attn_maps", exist_ok=True)
+            #     for i, attn_map in enumerate(attn_maps):
+            #         attn_map = F.interpolate(attn_map.unsqueeze(0), size=(384, 384), mode='bilinear', align_corners=False)
+            #         save_attn_map(attn_map, f"{output_path}/test_attn_maps/{os.path.basename(imp_path[i])}")
         loss = sum(losses) / len(losses)
         accuracy = 100 * correct / total
-        iou = sum(ious) / len(ious)
-        print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious) / len(ious)))
+        # iou = sum(ious) / len(ious)
+        # print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious) / len(ious)))
+
+        print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious)))
         wandb.log({f"{split}_accuracy": accuracy, f"{split}_loss:": loss})
-    return accuracy, loss, iou
+    return accuracy, loss, None
 
 def predict_one_shot(model_path, image_path, caption, device="cuda"):
     model.load_state_dict(torch.load("output/2023-12-13-23:34:53/epoch_48.pth"), strict=False)
