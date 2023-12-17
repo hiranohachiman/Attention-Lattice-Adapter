@@ -60,7 +60,7 @@ class SAN(nn.Module):
         self.clipfeatureclassifier = ClipFeatureClassifier()
         # self.tensortrainformer = TensorTransformation()
         # self.linear = nn.Linear(512, 768)
-        self.transformer = ViTClassifier(input_channels=768, num_classes=200, dim=512, depth=3, heads=8, mlp_dim=2048, dropout=0.25)
+        # self.transformer = ViTClassifier(input_channels=768, num_classes=200, dim=512, depth=3, heads=8, mlp_dim=2048, dropout=0.25)
         # self.double_transposed_conv = DoubleTransposedConv(in_channels=64, out_channels=16, kernel_size=4, stride=4, padding=0)
         # self.double_transposed_conv2 = DoubleTransposedConv(in_channels=768, out_channels=256, kernel_size=4, stride=4, padding=0)
 

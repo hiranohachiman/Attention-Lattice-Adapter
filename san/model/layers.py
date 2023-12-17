@@ -35,9 +35,12 @@ class ConvReducer(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(ConvReducer, self).__init__()
         self.conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)
+        self.drop_out = nn.Dropout(0.75)
 
     def forward(self, x):
-        return self.conv(x)
+        x = self.conv(x)
+        x = self.drop_out(x)
+        return x
 
 def zero_below_average(tensor):
     # テンソルの平均値を計算

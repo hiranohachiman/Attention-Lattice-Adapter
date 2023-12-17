@@ -117,13 +117,20 @@ def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
         image = image.convert('L')
         image = image.resize((384, 384))
         image = torch.from_numpy(np.asarray(image).copy()).float()
+        crop_size = 384
+        x = int((image.shape[1] - crop_size) / 2)
+        y = int((image.shape[0] - crop_size) / 2)
+        image = image[y:y+crop_size, x:x+crop_size]
 
     else:
         image = image.convert('RGB')
         image = image.resize((384, 384))
         image = torch.from_numpy(np.asarray(image).copy()).float()
         image = image.permute(2, 0, 1)
-
+        crop_size = 384
+        x = int((image.shape[1] - crop_size) / 2)
+        y = int((image.shape[0] - crop_size) / 2)
+        image = image[y:y+crop_size, x:x+crop_size]
 
     # if w < h:
     #     image = image.resize((640, int(h * 640 / w)))
