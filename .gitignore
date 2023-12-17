@@ -55,6 +55,7 @@ _darcs
 datasets/prepair_cub/chatgpt_api.py
 .history
 .env
+.python-version
 
 wandb
 amlt
