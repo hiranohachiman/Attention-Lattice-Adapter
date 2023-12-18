@@ -290,8 +290,36 @@ class ClipFeatureClassifier(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
 
-        return x 
-        
+        return x
+
+class EnhancedClassificationHead(nn.Module):
+    def __init__(self, num_classes=200, hidden_dim=1024, dropout_rate=0.5):
+        super(EnhancedClassificationHead, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))  # Global Average Pooling
+        self.flatten = nn.Flatten()  # Flatten the features
+        self.dropout1 = nn.Dropout(dropout_rate)  # Dropout layer
+        self.fc1 = nn.Linear(768, hidden_dim)  # First fully connected layer
+        self.relu = nn.ReLU()  # ReLU activation
+        self.batchnorm = nn.BatchNorm1d(hidden_dim)  # Batch normalization
+        self.dropout2 = nn.Dropout(dropout_rate)  # Another dropout layer
+        self.fc2 = nn.Linear(hidden_dim, num_classes)  # Final fully connected layer
+
+    def forward(self, x):
+        x = self.avg_pool(x)  # Apply global average pooling
+        x = self.flatten(x)  # Flatten the features
+        x = self.dropout1(x)  # Apply first dropout
+        x = self.fc1(x)  # Apply first fully connected layer
+        x = self.relu(x)  # Apply ReLU activation
+        x = self.batchnorm(x)  # Apply batch normalization
+        x = self.dropout2(x)  # Apply second dropout
+        x = self.fc2(x)  # Apply final fully connected layer
+        return x
+
+# Creating an instance of the enhanced classification head
+enhanced_classification_head = EnhancedClassificationHead()
+enhanced_classification_head
+
+
 class TensorTransformation(nn.Module):
     def __init__(self):
         super(TensorTransformation, self).__init__()
