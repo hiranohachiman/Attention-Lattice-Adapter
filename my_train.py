@@ -330,18 +330,19 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         logits, attn_class_preds, _ = model(images, with_mask=with_mask)
         main_loss = criterion(logits, labels)
         loss = main_loss
+        avg_attn_loss = 0
         if with_mask:
             attn_loss = criterion(attn_class_preds, labels)
             attn_losses.append(attn_loss.item())
             loss += attn_loss / 15
+            avg_attn_loss = sum(attn_losses) / len(attn_losses)
         main_losses.append(main_loss.item())
         # loss = main_loss + attn_loss / 15
-        loss = main_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         avg_main_loss = sum(main_losses) / len(main_losses)
-        avg_attn_loss = sum(attn_losses) / len(attn_losses)
+
     if with_mask:
         print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
     else:
@@ -404,7 +405,7 @@ def predict_one_shot(model_path, image_path, caption, device="cuda"):
     return predicted
 
 class EarlyStopping():
-    def __init__(self, patience=5):
+    def __init__(self, patience=10):
         self.patience = patience
         self.best_loss = float('inf')
         self.best_epoch = None
@@ -481,7 +482,7 @@ def main(args):
     scheduler = trainer.build_lr_scheduler(cfg, optimizer)
     trainer.resume_or_load(resume=args.resume)
     criterion = nn.CrossEntropyLoss()
-    pretrain_epoch = 60
+    pretrain_epoch = 30
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
     train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
@@ -489,13 +490,13 @@ def main(args):
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     best_epoch = 0
     for epoch in range(pretrain_epoch):
-        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, False, num_epochs)
+        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, False)
         arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, False, split="val")
         # torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
         # torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
         torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
     for epoch in range(pretrain_epoch, num_epochs):
-        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, True, num_epochs)
+        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, True)
         arrucacy, loss, iou = eval(model, valid_loader, criterion,  cfg.OUTPUT_DIR, True, split="val")
         early_stop, best_epoch = early_stopper.early_stop(loss, epoch)
         torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))

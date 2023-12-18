@@ -214,6 +214,7 @@ class SAN(nn.Module):
 
         # print(reshaped_mask_preds.shape)
             logits = self.clipfeatureclassifier(clip_image_features[9])
+            logits = self.linear5(logits)
             return logits, None, None
         # global average pooling
         # clip_image_features[9] += reshaped_mask_preds

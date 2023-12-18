@@ -182,7 +182,7 @@ def remove_other_components(mask, threshold=0.3):
     # new_mask = first_mask + second_mask + third_mask
     return new_mask
 
-def apply_heat_quantization(attention, q_level: int = 2):
+def apply_heat_quantization(attention, q_level: int = 4):
     max_ = attention.max()
     min_ = attention.min()
 
