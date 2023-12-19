@@ -482,24 +482,24 @@ def main(args):
     scheduler = trainer.build_lr_scheduler(cfg, optimizer)
     trainer.resume_or_load(resume=args.resume)
     criterion = nn.CrossEntropyLoss()
-    pretrain_epoch = 30
+
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
     train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
     valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     best_epoch = 0
-    for epoch in range(pretrain_epoch):
+    for epoch in range(num_epochs//2):
+        epoch = epoch * 2
         model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, False)
         arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, False, split="val")
         # torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
         # torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
         torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
-    for epoch in range(pretrain_epoch, num_epochs):
-        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, True)
+        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch+1, num_epochs, True)
         arrucacy, loss, iou = eval(model, valid_loader, criterion,  cfg.OUTPUT_DIR, True, split="val")
-        early_stop, best_epoch = early_stopper.early_stop(loss, epoch)
-        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+        early_stop, best_epoch = early_stopper.early_stop(loss, epoch+1)
+        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch+1}.pth"))
         if early_stop:
             print("early stopped...")
             break

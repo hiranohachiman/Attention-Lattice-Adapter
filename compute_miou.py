@@ -23,6 +23,17 @@ def calculate_iou(gt_img, pred_img):
     iou = np.sum(intersection) / np.sum(union)
     return iou
 
+
+def apply_gaussian_filter(img):
+    filtered_img = cv2.GaussianBlur(img, (5, 5), 0)
+    return filtered_img
+
+def resize_and_crop_image(img):
+    resized_img = cv2.resize(img, (510, 510), interpolation=cv2.INTER_LINEAR)
+    cropped_img = resized_img[63:447, 63:447]
+    return cropped_img
+
+
 def compute_mean_iou(directory_gt, directory_pred):
     gt_files = sorted(os.listdir(directory_gt))
     pred_files = sorted(os.listdir(directory_pred))
@@ -40,7 +51,9 @@ def compute_mean_iou(directory_gt, directory_pred):
         # ファイルが画像であるかの簡易的なチェック
         if gt_path.lower().endswith(('.png', '.jpg', '.jpeg')):
             gt_img = cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)
-            pred_img = cv2.imread(pred_path)
+            gt_img = resize_and_crop_image(gt_img)
+            pred_img = cv2.imread(pred_path, cv2.IMREAD_GRAYSCALE)
+            # gt_img = apply_gaussian_filter(gt_img)
             ious.append(calculate_iou(gt_img, pred_img))
 
     return np.mean(ious)
@@ -58,9 +71,9 @@ if __name__ == '__main__':
     parser.add_argument(
         "--img_dir", type=str, required=True
     )
-    parser.add_argument(
-        "--predict_mode", type=str, required=True
-    )
+    # parser.add_argument(
+    #     "--predict_mode", type=str, required=True
+    # )
 
     args = parser.parse_args()
     main(args)

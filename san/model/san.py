@@ -204,7 +204,7 @@ class SAN(nn.Module):
             clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
             logits = self.clipfeatureclassifier(clip_image_features[9])
             logits = self.linear5(logits)
-            return logits, attn_class_preds, reshaped_mask_preds
+            return logits, attn_class_preds, 'reshaped_mask_preds'
 
         # reshaped_mask_preds = zero_below_average(reshaped_mask_preds)
         # reshaped_mask_preds = reshaped_mask_preds.repeat(1, 768, 1, 1)
