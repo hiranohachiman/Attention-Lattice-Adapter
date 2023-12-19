@@ -240,11 +240,10 @@ p1 = 0.5
 masks = generate_masks(N, 8, 0.5)
 
 def save_saliency_map(saliency_map, file_path):
-    plt.imshow(saliency_map, cmap='gray')
-    plt.axis('off')  # 軸を非表示にする
-    plt.savefig(file_path, bbox_inches='tight', pad_inches=0)
-    plt.close()
-
+    # 画像を正規化して保存
+    saliency_map_normalized = (saliency_map - np.min(saliency_map)) / (np.max(saliency_map) - np.min(saliency_map))
+    saliency_map_normalized = (saliency_map_normalized * 255).astype(np.uint8)
+    cv2.imwrite(file_path, saliency_map_normalized)
 
 def main(args):
     model_paths = [file for file in os.listdir(args.model_dir) if 'epoch_' in file]
@@ -270,7 +269,7 @@ def main(args):
             single_image = transform(img).unsqueeze(0).permute(0, 2, 3, 1).cpu().numpy()
             sal = explain(model, single_image, masks)
             attn_map = sal[label]
-            save_saliency_map(attn_map, os.path.join(args.output_dir, f"{os.path.basename(img_path)}_attn_map.png"))
+            save_saliency_map(attn_map, os.path.join(args.output_dir, f"{os.path.basename(img_path)}"))
             # single_target = label
 
             # single_attn = cv2.imread(os.path.join(args.output_dir, f"{os.path.basename(img_path)}_attn_map.png"), cv2.IMREAD_GRAYSCALE)

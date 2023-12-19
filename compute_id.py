@@ -226,11 +226,11 @@ def main(args):
             single_image = transform(img).cpu().numpy()
             single_target = label
 
-            single_attn = cv2.imread(os.path.join(args.output_dir, f"{os.path.basename(img_path)}_attn_map.png"), cv2.IMREAD_GRAYSCALE)
+            single_attn = cv2.imread(os.path.join(args.output_dir, f"{os.path.basename(img_path)}"), cv2.IMREAD_GRAYSCALE)
             single_attn = Image.fromarray(single_attn)
             transform_for_mask = _make_transform_for_mask(istrain=False)
             single_attn = transform_for_mask(single_attn).cpu().numpy()
-            single_attn = apply_heat_quantization(single_attn)
+            # single_attn = apply_heat_quantization(single_attn)
             metrics.evaluate(single_image, single_attn, single_target)
             metrics.save_roc_curve(args.output_dir)
 

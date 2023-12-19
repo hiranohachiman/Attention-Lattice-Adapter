@@ -1,66 +1,62 @@
-import numpy as np
-import cv2
 import os
-from tqdm import tqdm
+import cv2
+import numpy as np
+from PIL import Image
 
-gt_dir = "datasets/CUB/extracted_test_segmentation_old"
+def resize_and_crop(image_array):
+    # 画像を510x510にリサイズ
+    resized_image = Image.fromarray(image_array).resize((510, 510))
 
+    # NumPy配列に変換
+    resized_array = np.array(resized_image)
 
-def calculate_iou(gt_img, pred_img):
-    # gt_imgを2値画像として扱い、0と1のみの値を持つように変換
-    gt_img = (gt_img > 127).astype(np.uint8)
-    if pred_img.shape[2] == 3:
-        # pred_imgをグレースケールに変換
-        pred_gray = cv2.cvtColor(pred_img, cv2.COLOR_RGB2GRAY)
-    # 2値画像に変換
-    _, pred_binary = cv2.threshold(pred_gray, 127, 255, cv2.THRESH_BINARY)
+    # 384x384の中央領域をクロップ
+    start = (510 - 384) // 2  # 中央の開始位置を計算
+    cropped_array = resized_array[start:start+384, start:start+384]
 
-    # 交差領域の計算
-    intersection = np.logical_and(gt_img, pred_binary)
-    # 統合領域の計算
-    union = np.logical_or(gt_img, pred_binary)
+    return cropped_array
 
-    iou = np.sum(intersection) / np.sum(union)
-    return iou
+def comput_iou(gt, pred):
 
-def compute_mean_iou(directory_gt, directory_pred):
-    gt_files = sorted(os.listdir(directory_gt))
-    pred_files = sorted(os.listdir(directory_pred))
-    # 同じ名前のファイルを持つことを確認
-    gt_names = [os.path.splitext(f)[0] for f in gt_files]
-    pred_names = [os.path.splitext(f)[0] for f in pred_files]
-    assert gt_names == pred_names, "The two directories do not contain the same set of image filenames."
+    pred = read_image(pred)
+    gt = read_image(gt)
+    gt = resize_and_crop(gt)
+    threshold = np.mean(pred)
+    std = np.std(pred)
+    threshold = threshold + std
+    pred = np.where(pred >= threshold, 1, 0)
+    intersection = np.logical_and(gt, pred)
+    union = np.logical_or(gt, pred)
+    iou_score = np.sum(intersection) / np.sum(union)
+    return iou_score
 
-    ious = []
-
-    for file_name in tqdm(gt_files):
-        gt_path = os.path.join(directory_gt, file_name)
-        pred_path = os.path.join(directory_pred, file_name).replace("png","jpg")
-
-        # ファイルが画像であるかの簡易的なチェック
-        if gt_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-            gt_img = cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)
-            pred_img = cv2.imread(pred_path)
-            ious.append(calculate_iou(gt_img, pred_img))
-
-    return np.mean(ious)
+def read_image(file_path):
+    image = Image.open(file_path).convert("L")
+    image_array = np.array(image)
+    return image_array
 
 
-def main(args):
-    print("computing iou...")
-    mean_iou = compute_mean_iou(gt_dir, args.img_dir)
-    print("mean_iou: ", mean_iou, f"predict_mode: {args.predict_mode}")
 
+attn_dir = "output/2023-12-18-11:10:19/rise"
+image_dir = "datasets/CUB/test"
+def get_filenames(directory):
+    files = []
+    for root, _, filenames in os.walk(directory):
+        for filename in filenames:
+            files.append(os.path.join(root, filename))
+    return files
 
-if __name__ == '__main__':
-    from argparse import ArgumentParser
-    parser = ArgumentParser()
-    parser.add_argument(
-        "--img_dir", type=str, required=True
-    )
-    parser.add_argument(
-        "--predict_mode", type=str, required=True
-    )
-
-    args = parser.parse_args()
-    main(args)
+attn_files = get_filenames(attn_dir)
+image_files = get_filenames(image_dir)
+print(attn_files)
+print(image_files)
+ious = []
+for attn_file in attn_files:
+    attn_base_name = os.path.basename(attn_file)
+    for image_file in image_files:
+        image_base_name = os.path.basename(image_file)
+        if attn_base_name == image_base_name:
+            print(attn_base_name, image_base_name)
+            ious.append(comput_iou(image_file, attn_file))
+            break
+print(np.mean(ious))

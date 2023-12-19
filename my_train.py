@@ -330,14 +330,11 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         logits, attn_class_preds, _ = model(images, with_mask=with_mask)
         main_loss = criterion(logits, labels)
         loss = main_loss
-        avg_attn_loss = 0
-        if with_mask:
-            attn_loss = criterion(attn_class_preds, labels)
-            attn_losses.append(attn_loss.item())
-            loss += attn_loss / 15
-            avg_attn_loss = sum(attn_losses) / len(attn_losses)
+        attn_loss = criterion(attn_class_preds, labels)
+        attn_losses.append(attn_loss.item())
+        loss += attn_loss / 15
+        avg_attn_loss = sum(attn_losses) / len(attn_losses)
         main_losses.append(main_loss.item())
-        # loss = main_loss + attn_loss / 15
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
