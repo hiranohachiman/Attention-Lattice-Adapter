@@ -13,7 +13,7 @@ import wandb
 import math
 import loralib as lora
 
-from .layers import ClassifierHead, patch_based_importance_avg, ConvReducer, ClassificationCNN, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier, zero_below_average, TensorTransformation, DoubleTransposedConv
+from .layers import ConvCNN, ClassifierHead, patch_based_importance_avg, ConvReducer, ModifiedModel, normalize_per_batch, SimpleClassifier, LinearLayer, ABNClassifier, ClipFeatureClassifier, zero_below_average, TensorTransformation, DoubleTransposedConv
 from .clip_utils import FeatureExtractor, LearnableBgOvClassifier, PredefinedOvClassifier, RecWithAttnbiasHead, get_predefined_templates
 from .criterion import SetCriterion, cross_entropy_loss, info_nce
 from .matcher import HungarianMatcher
@@ -48,6 +48,7 @@ class SAN(nn.Module):
         self.register_buffer('pixel_mean', torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer('pixel_std', torch.Tensor(pixel_std).view(-1, 1, 1), False)
         self.conv1 = ConvReducer(100, 1)
+        self.conv2 = ConvCNN()
         # self.conv2 = nn.Conv2d(100, 1)
         # self.simplecnn = ClassificationCNN()
         # self.modi = ModifiedModel()
@@ -201,6 +202,7 @@ class SAN(nn.Module):
         # print(reshaped_mask_preds.shape) # [8, 256, 80, 80]
             reshaped_mask_preds = self.conv1(mask_preds[-1])
             attn_class_preds = self.abnclassifier(mask_preds[-1])
+            # clip_image_feature = self.conv2(clip_image_features[9])
             clip_image_features[9] *= normalize_per_batch(reshaped_mask_preds)
             logits = self.clipfeatureclassifier(clip_image_features[9])
             logits = self.linear5(logits)

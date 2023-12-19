@@ -135,25 +135,24 @@ class ClassifierHead(nn.Module):
         return x
 
 
-class ClassificationCNN(nn.Module):
-
-    def __init__(self, num_classes=200):
-        super(ClassificationCNN, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=768, out_channels=32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
-        self.fc1 = nn.Linear(1600, 512)
-        self.fc2 = nn.Linear(512, num_classes)
+class ConvCNN(nn.Module):
+    def __init__(self):
+        super(ConvCNN, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels=768, out_channels=512, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(512)
+        self.bn2 = nn.BatchNorm2d(256)
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
-        x = self.pool(self.relu(self.conv1(x)))
-        x = self.pool(self.relu(self.conv2(x)))
-        x = x.reshape(-1, 1600)
-        x = self.relu(self.fc1(x))
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
         x = self.dropout(x)
-        x = self.fc2(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu(x)
         return x
 
 
@@ -290,8 +289,8 @@ class ClipFeatureClassifier(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
 
-        return x 
-        
+        return x
+
 class TensorTransformation(nn.Module):
     def __init__(self):
         super(TensorTransformation, self).__init__()

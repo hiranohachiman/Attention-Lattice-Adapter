@@ -182,7 +182,7 @@ def remove_other_components(mask, threshold=0.3):
     # new_mask = first_mask + second_mask + third_mask
     return new_mask
 
-def apply_heat_quantization(attention, q_level: int = 4):
+def apply_heat_quantization(attention, q_level: int = 3):
     max_ = attention.max()
     min_ = attention.min()
 
@@ -240,8 +240,8 @@ def main(args):
                 print("total_deletion:", metrics.total_deletion)
                 print("average", (metrics.total_insertion - metrics.total_deletion) / x)
     print("!!!!!!!!!!!!!!!!!!!!!!!!")
-    print("total_insertion:", metrics.total_insertion)
-    print("total_deletion:", metrics.total_deletion)
+    print("total_insertion:", metrics.total_insertion / x)
+    print("total_deletion:", metrics.total_deletion / x)
     print("ins-del score:",metrics.total_insertion - metrics.total_deletion)
     print("average", (metrics.total_insertion - metrics.total_deletion) / x)
     print("!!!!!!!!!!!!!!!!!!!!!!!!")
