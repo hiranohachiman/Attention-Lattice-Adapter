@@ -73,8 +73,8 @@ def _make_transform(istrain: bool):
                     ])
     else:
         transform = transforms.Compose([
-                            transforms.Resize((510, 510), Image.BILINEAR),
-                            transforms.CenterCrop((384, 384)),
+                            transforms.Resize((384, 384), Image.BILINEAR),
+                            # transforms.CenterCrop((384, 384)),
                             transforms.ToTensor(),
                             normalize
                     ])
@@ -98,8 +98,8 @@ def _make_transform_for_mask(istrain: bool):
     else:
         transform_for_mask = transforms.Compose([
                                 transforms.Grayscale(num_output_channels=1),  # カラー画像をグレースケールに変換
-                                transforms.Resize((510, 510), Image.BILINEAR),
-                                transforms.CenterCrop((384, 384)),
+                                transforms.Resize((384, 384), Image.BILINEAR),
+                                # transforms.CenterCrop((384, 384)),
                                 transforms.ToTensor()
                             ])
     return transform_for_mask

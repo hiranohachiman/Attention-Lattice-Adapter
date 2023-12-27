@@ -58,6 +58,7 @@ from san.utils import WandbWriter, setup_wandb
 from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _preprocess
 from torchinfo import summary
 import loralib as lora
+from scipy.ndimage import gaussian_filter
 
 def weight_init_kaiming(m):
     class_names = m.__class__.__name__
@@ -299,16 +300,18 @@ def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
     preds = preds.squeeze(0).cpu().numpy()
     masks = masks.cpu().numpy()
     for i in range(len(preds)):
-
         std = np.std(preds[i])
-    # Determine the threshold value
+        # Determine the threshold value
         if threshold == "mean":
             threshold = np.mean(preds[i]) + std
 
-    # Apply the threshold with custom true and false values
+        # Apply Gaussian filter to preds
+        preds[i] = gaussian_filter(preds[i], sigma=1)
+
+        # Apply the threshold with custom true and false values
         preds[i] = np.where(preds[i] > threshold, true_value, false_value)
 
-    # Calculate Intersection over Union (IoU)
+        # Calculate Intersection over Union (IoU)
         intersection = np.logical_and(preds[i], masks[i])
         union = np.logical_or(preds[i], masks[i])
         iou_score = np.sum(intersection) / np.sum(union)
@@ -318,16 +321,17 @@ def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
     save_attn_map(torch.tensor(masks[0]).unsqueeze(0), "attn_gt_mask.png")
     return iou
 
-def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask, device="cuda"):
+def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask=True, device="cuda"):
     model.train()
     model = model.to(device)
+    model.with_mask = with_mask
     criterion = criterion.to(device)
     main_losses = []
     attn_losses = []
     for i, (images, _, captions, labels) in enumerate(tqdm(train_loader)):
         images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
         labels = labels.to(device)
-        logits, attn_class_preds, _ = model(images, with_mask=with_mask)
+        logits, attn_class_preds, _ = model(images)
         main_loss = criterion(logits, labels)
         loss = main_loss
         avg_attn_loss = 0
@@ -344,16 +348,17 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         avg_main_loss = sum(main_losses) / len(main_losses)
 
     if with_mask:
-        print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
+        print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss - avg_attn_loss, avg_attn_loss, avg_main_loss, optimizer.param_groups[0]['lr']))
     else:
         print('Epoch [{}/{}], main_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
     scheduler.step()
     wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
     return model
 
-def eval(model, valid_loader, criterion, output_path, with_mask, split="val", device="cuda"):
+def eval(model, valid_loader, criterion, output_path, with_mask=True, split="val", device="cuda"):
     model.eval()
     model = model.to(device)
+    model.with_mask = with_mask
     losses = []
     ious = []
     with torch.no_grad():
@@ -362,10 +367,9 @@ def eval(model, valid_loader, criterion, output_path, with_mask, split="val", de
         for i, (images, masks, captions, labels, imp_path) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
-            if with_mask:
-                logits ,_, attn_maps = model(images, with_mask=with_mask)
-                ious.append(get_iou(attn_maps, masks))
-            logits ,_, attn_maps = model(images, with_mask=with_mask)
+            logits , attn_class_preds, attn_maps = model(images)
+            logits += attn_class_preds
+            ious.append(get_iou(attn_maps, masks))
             _, predicted = torch.max(logits.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -491,13 +495,13 @@ def main(args):
     best_epoch = 0
     for epoch in range(num_epochs//2):
         epoch = epoch * 2
-        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, False)
-        arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, False, split="val")
+        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask=False)
+        # arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, with_mask=False, split="val")
         # torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
         # torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
-        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
-        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch+1, num_epochs, True)
-        arrucacy, loss, iou = eval(model, valid_loader, criterion,  cfg.OUTPUT_DIR, True, split="val")
+        # torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch+1, num_epochs, with_mask=True)
+        arrucacy, loss, iou = eval(model, valid_loader, criterion,  cfg.OUTPUT_DIR, with_mask=True, split="val")
         early_stop, best_epoch = early_stopper.early_stop(loss, epoch+1)
         torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch+1}.pth"))
         if early_stop:
