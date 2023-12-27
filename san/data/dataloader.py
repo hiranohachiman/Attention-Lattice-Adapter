@@ -27,11 +27,11 @@ class CUBDataset(Dataset):
                     std=[0.229, 0.224, 0.225]
                 )
         if split == "train":
-            self.transforms = _make_transform(istrain=True)
-            self.transforms_for_mask = _make_transform_for_mask(istrain=True)
+            self.transforms = self._make_transform(istrain=True)
+            self.transforms_for_mask = self._make_transform_for_mask(istrain=True)
         else:
-            self.transforms = _make_transform(istrain=False)
-            self.transforms_for_mask = _make_transform_for_mask(istrain=False)
+            self.transforms = self._make_transform(istrain=False)
+            self.transforms_for_mask = self._make_transform_for_mask(istrain=False)
 
     def __len__(self):
         return len(self.data)
@@ -56,53 +56,53 @@ class CUBDataset(Dataset):
         else:
             return img, mask, caption, label, img_path
 
-def _make_transform(istrain: bool):
-    normalize = transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        )
-    if istrain:
-        transform = transforms.Compose([
+    def _make_transform(self, istrain: bool):
+        normalize = transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )
+        if istrain:
+            transform = transforms.Compose([
+                                transforms.Resize((510, 510), Image.BILINEAR),
+                                transforms.RandomCrop((384, 384)),
+                                transforms.RandomHorizontalFlip(),
+                                transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
+                                transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
+                                transforms.ToTensor(),
+                                normalize
+                        ])
+        else:
+            transform = transforms.Compose([
+                                transforms.Resize((384, 384), Image.BILINEAR),
+                                # transforms.CenterCrop((384, 384)),
+                                transforms.ToTensor(),
+                                normalize
+                        ])
+        return transform
+
+    def _make_transform_for_mask(self, istrain: bool):
+        normalize = transforms.Normalize(
+                mean=[0.5],
+                std=[0.5]
+            )
+        if istrain:
+            transform_for_mask = transforms.Compose([
+                            transforms.Grayscale(num_output_channels=1),  # カラー画像をグレースケールに変換
                             transforms.Resize((510, 510), Image.BILINEAR),
                             transforms.RandomCrop((384, 384)),
                             transforms.RandomHorizontalFlip(),
                             transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
                             transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
-                            transforms.ToTensor(),
-                            normalize
-                    ])
-    else:
-        transform = transforms.Compose([
-                            transforms.Resize((384, 384), Image.BILINEAR),
-                            # transforms.CenterCrop((384, 384)),
-                            transforms.ToTensor(),
-                            normalize
-                    ])
-    return transform
-
-def _make_transform_for_mask(istrain: bool):
-    normalize = transforms.Normalize(
-            mean=[0.5],
-            std=[0.5]
-        )
-    if istrain:
-        transform_for_mask = transforms.Compose([
-                        transforms.Grayscale(num_output_channels=1),  # カラー画像をグレースケールに変換
-                        transforms.Resize((510, 510), Image.BILINEAR),
-                        transforms.RandomCrop((384, 384)),
-                        transforms.RandomHorizontalFlip(),
-                        transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
-                        transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
-                        transforms.ToTensor()
-                    ])
-    else:
-        transform_for_mask = transforms.Compose([
-                                transforms.Grayscale(num_output_channels=1),  # カラー画像をグレースケールに変換
-                                transforms.Resize((384, 384), Image.BILINEAR),
-                                # transforms.CenterCrop((384, 384)),
-                                transforms.ToTensor()
-                            ])
-    return transform_for_mask
+                            transforms.ToTensor()
+                        ])
+        else:
+            transform_for_mask = transforms.Compose([
+                                    transforms.Grayscale(num_output_channels=1),  # カラー画像をグレースケールに変換
+                                    transforms.Resize((384, 384), Image.BILINEAR),
+                                    # transforms.CenterCrop((384, 384)),
+                                    transforms.ToTensor()
+                                ])
+        return transform_for_mask
 
 
 def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
@@ -138,6 +138,45 @@ def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
     #     image = image.resize((int(w * 640 / h), 640))
 
     return image
+
+class ImageNetSDataset(Dataset):
+    def __init__(self, root_dir, split="train"):
+        if split == "train":
+            self.split = "train"
+            label_file = os.path.join(root_dir, "labels.txt")
+            with open(label_file, 'r') as f:
+                label_names = f.readlines()
+                label_names = [label_name.strip() for label_name in label_names]
+            # print(label_names)
+            root_dir = os.path.join(root_dir, "train")
+            img_dirs = os.listdir(root_dir)
+            # print(img_dirs)
+            self.img_paths = []
+            count = 0
+            for img_dir in img_dirs:
+                if "tar" in img_dir:
+                    continue
+                if img_dir.split("/")[-1] not in label_names:
+                    continue
+
+                label = label_names.index(img_dir.split("/")[-1])
+                img_paths = os.listdir(os.path.join(root_dir, img_dir))
+                for img_path in img_paths:
+                    self.img_paths.append([os.path.join(root_dir, img_dir, img_path), label])
+            # print(len(self.img_paths))
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
+        img_path = self.img_paths[idx][0]
+        label = self.img_paths[idx][1]
+        img = Image.open(img_path)
+        img = _preprocess(img)
+        return img, 0, 0, label
+
+
+image_net_s_dataset = ImageNetSDataset(root_dir="datasets/ImageNetS919", split="train")
+
 
 train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB', split="train")
 valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB', split="val")

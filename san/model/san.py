@@ -54,7 +54,7 @@ class SAN(nn.Module):
         # self.mask_embs_classifier = SimpleClassifier()
         # self.attention = nn.MultiheadAttention(768, 8)
         # self.transformer = TransformerDecoder(200)
-        self.linear5 = LinearLayer(200, 200)
+        self.linear5 = LinearLayer(200, 919)
         # self.linear6 = LinearLayer(512, 200)
         self.abnclassifier = ABNClassifier()
         self.clipfeatureclassifier = ClipFeatureClassifier()

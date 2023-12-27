@@ -55,7 +55,7 @@ from san import (
 from san.model.san import SAN
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
-from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _preprocess
+from san.data.dataloader import train_dataset, valid_dataset, test_dataset, image_net_s_dataset, _preprocess
 from torchinfo import summary
 import loralib as lora
 from scipy.ndimage import gaussian_filter
@@ -489,7 +489,7 @@ def main(args):
 
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
-    train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
+    train_loader = DataLoader(image_net_s_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
     valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     best_epoch = 0

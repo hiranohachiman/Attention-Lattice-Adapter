@@ -240,7 +240,7 @@ class ABNClassifier(nn.Module):
         self.bn = nn.BatchNorm2d(100)
         self.conv1 = nn.Conv2d(100, 32, 1)  # 1x1 Convolution, 入力チャンネル: 100, 出力チャンネル: 16
         self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(32, 200, 1)  # 1x1 Convolution, 入力チャンネル: 16, 出力チャンネル: 200
+        self.conv2 = nn.Conv2d(32, 919, 1)  # 1x1 Convolution, 入力チャンネル: 16, 出力チャンネル: 200
 
     def forward(self, x):
         x = self.bn(x)
@@ -290,8 +290,8 @@ class ClipFeatureClassifier(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
 
-        return x 
-        
+        return x
+
 class TensorTransformation(nn.Module):
     def __init__(self):
         super(TensorTransformation, self).__init__()
