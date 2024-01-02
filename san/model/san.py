@@ -20,6 +20,8 @@ from .matcher import HungarianMatcher
 from .side_adapter import build_side_adapter_network
 from .visualize import save_overlay_image_with_matplotlib, save_side_by_side_image, save_image_to_directory
 from .attention import TransformerDecoder, ViTClassifier
+from scipy.ndimage import gaussian_filter
+
 
 @META_ARCH_REGISTRY.register()
 class SAN(nn.Module):
@@ -213,6 +215,9 @@ class SAN(nn.Module):
         clip_image_features[9] *= reshaped_mask_preds
         logits = self.clipfeatureclassifier(clip_image_features[9])
         logits = self.linear5(logits)
+        reshaped_mask_preds = gaussian_filter(reshaped_mask_preds.cpu().detach().numpy(), sigma=1)
+        reshaped_mask_preds = torch.from_numpy(reshaped_mask_preds)
+
         return logits, attn_class_preds, reshaped_mask_preds
 
         # reshaped_mask_preds = zero_below_average(reshaped_mask_preds)

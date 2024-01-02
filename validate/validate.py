@@ -1,4 +1,4 @@
-from predict import Predictor
+from dump.predict import Predictor
 import os
 import glob
 from tqdm import tqdm

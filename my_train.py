@@ -59,6 +59,8 @@ from san.data.dataloader import train_dataset, valid_dataset, test_dataset, _pre
 from torchinfo import summary
 import loralib as lora
 from scipy.ndimage import gaussian_filter
+import torch
+import torch
 
 def weight_init_kaiming(m):
     class_names = m.__class__.__name__
@@ -305,9 +307,6 @@ def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
         if threshold == "mean":
             threshold = np.mean(preds[i]) + std
 
-        # Apply Gaussian filter to preds
-        preds[i] = gaussian_filter(preds[i], sigma=1)
-
         # Apply the threshold with custom true and false values
         preds[i] = np.where(preds[i] > threshold, true_value, false_value)
 
@@ -495,7 +494,7 @@ def main(args):
     best_epoch = 0
     for epoch in range(num_epochs//2):
         epoch = epoch * 2
-        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask=False)
+        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask=True)
         # arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, with_mask=False, split="val")
         # torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
         # torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
