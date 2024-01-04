@@ -140,43 +140,45 @@ def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
     return image
 
 class ImageNetSDataset(Dataset):
-    def __init__(self, root_dir, split="train"):
-        if split == "train":
-            self.split = "train"
-            label_file = os.path.join(root_dir, "labels.txt")
-            with open(label_file, 'r') as f:
-                label_names = f.readlines()
-                label_names = [label_name.strip() for label_name in label_names]
-            # print(label_names)
-            root_dir = os.path.join(root_dir, "train")
-            img_dirs = os.listdir(root_dir)
-            # print(img_dirs)
-            self.img_paths = []
-            count = 0
-            for img_dir in img_dirs:
-                if "tar" in img_dir:
-                    continue
-                if img_dir.split("/")[-1] not in label_names:
-                    continue
+    def __init__(self, path_label_file, split="train"):
+        self.split = split
+        if self.split == "train":
+            with open(path_label_file, 'r') as f:
+                self.img_paths_labels = f.readlines()
+                self.img_paths = [img_path.strip().split(",")[0] for img_path in self.img_paths_labels]
+                self.labels = [int(img_path.strip().split(",")[1]) - 1 for img_path in self.img_paths_labels]
 
-                label = label_names.index(img_dir.split("/")[-1])
-                img_paths = os.listdir(os.path.join(root_dir, img_dir))
-                for img_path in img_paths:
-                    self.img_paths.append([os.path.join(root_dir, img_dir, img_path), label])
-            # print(len(self.img_paths))
+        else:
+            with open(path_label_file, 'r') as f:
+                self.img_paths_labels = f.readlines()
+                self.img_paths = [img_path.strip().split(",")[0] for img_path in self.img_paths_labels]
+                self.labels = [int(img_path.strip().split(",")[1]) - 1 for img_path in self.img_paths_labels]
+                self.seg_paths = [img_path.strip().split(",")[2].strip().replace("JPEG", "png") for img_path in self.img_paths_labels]
+
     def __len__(self):
         return len(self.img_paths)
 
     def __getitem__(self, idx):
-        img_path = self.img_paths[idx][0]
-        label = self.img_paths[idx][1]
-        img = Image.open(img_path)
-        img = _preprocess(img)
-        return img, 0, 0, label
+        if self.split == "train":
+            img_path = self.img_paths[idx]
+            label = self.labels[idx]
+            img = Image.open(img_path)
+            img = _preprocess(img)
+            return img, 0, 0, label
+
+        else:
+            img_path = self.img_paths[idx]
+            label = torch.tensor(self.labels[idx])
+            mask_path = self.seg_paths[idx]
+            img = Image.open(img_path)
+            img = _preprocess(img)
+            mask = Image.open(mask_path)
+            mask = _preprocess(mask, color="L")
+            return img, mask, 0, label, img_path
 
 
-image_net_s_dataset = ImageNetSDataset(root_dir="datasets/ImageNetS919", split="train")
-
+image_net_train_dataset = ImageNetSDataset(path_label_file="datasets/ImageNetS919/train.txt", split="train")
+image_net_valid_dataset = ImageNetSDataset(path_label_file="datasets/ImageNetS919/valid.txt", split="valid")
 
 train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB', split="train")
 valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB', split="val")

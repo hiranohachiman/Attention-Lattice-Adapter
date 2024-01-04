@@ -55,7 +55,7 @@ from san import (
 from san.model.san import SAN
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
-from san.data.dataloader import train_dataset, valid_dataset, test_dataset, image_net_s_dataset, _preprocess
+from san.data.dataloader import train_dataset, valid_dataset, test_dataset, image_net_train_dataset, image_net_valid_dataset ,_preprocess
 from torchinfo import summary
 import loralib as lora
 from scipy.ndimage import gaussian_filter
@@ -348,7 +348,7 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         avg_main_loss = sum(main_losses) / len(main_losses)
 
     if with_mask:
-        print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss - avg_attn_loss, avg_attn_loss, avg_main_loss, optimizer.param_groups[0]['lr']))
+        print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss, optimizer.param_groups[0]['lr']))
     else:
         print('Epoch [{}/{}], main_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
     scheduler.step()
@@ -364,7 +364,7 @@ def eval(model, valid_loader, criterion, output_path, with_mask=True, split="val
     with torch.no_grad():
         total = 0
         correct = 0
-        for i, (images, masks, captions, labels, imp_path) in enumerate(tqdm(valid_loader)):
+        for i, (images, masks, captions, labels, img_path) in enumerate(tqdm(valid_loader)):
             images = images.to(device)
             labels = labels.to(device)
             logits , attn_class_preds, attn_maps = model(images)
@@ -378,7 +378,7 @@ def eval(model, valid_loader, criterion, output_path, with_mask=True, split="val
                 os.makedirs(f"{output_path}/test_attn_maps", exist_ok=True)
                 for i, attn_map in enumerate(attn_maps):
                     attn_map = F.interpolate(attn_map.unsqueeze(0), size=(384, 384), mode='bilinear', align_corners=False)
-                    save_attn_map(attn_map, f"{output_path}/test_attn_maps/{os.path.basename(imp_path[i])}")
+                    save_attn_map(attn_map, f"{output_path}/test_attn_maps/{os.path.basename(img_path[i])}")
         loss = sum(losses) / len(losses)
         accuracy = 100 * correct / total
         if with_mask:
@@ -489,8 +489,8 @@ def main(args):
 
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
-    train_loader = DataLoader(image_net_s_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
-    valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
+    train_loader = DataLoader(image_net_train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
+    valid_loader = DataLoader(image_net_valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     best_epoch = 0
     for epoch in range(num_epochs//2):
