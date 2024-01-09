@@ -26,7 +26,7 @@ class SAN(nn.Module):
 
     @configurable
     def __init__(self, *, clip_visual_extractor, clip_rec_head, side_adapter_network,
-                 ov_classifier, caption_embedder, criterion, size_divisibility, asymetric_input=True,
+                 ov_classifier, caption_embedder, size_divisibility, asymetric_input=True,
                  clip_resolution=0.5, pixel_mean=[0.48683309, 0.50015243, 0.43198669],
                  pixel_std=[0.53930313, 0.54964845, 0.50728528],
                  sem_seg_postprocess_before_inference=False):
@@ -35,7 +35,7 @@ class SAN(nn.Module):
         self.clip_resolution = clip_resolution
         self.sem_seg_postprocess_before_inference = sem_seg_postprocess_before_inference
         self.size_divisibility = size_divisibility
-        self.criterion = criterion
+        # self.criterion = criterion
         self.side_adapter_network = side_adapter_network
         self.clip_visual_extractor = clip_visual_extractor
         # self.clip_rec_head = clip_rec_head
@@ -71,10 +71,10 @@ class SAN(nn.Module):
         class_weight = cfg.MODEL.SAN.CLASS_WEIGHT
         dice_weight = cfg.MODEL.SAN.DICE_WEIGHT
         mask_weight = cfg.MODEL.SAN.MASK_WEIGHT
-        matcher = HungarianMatcher(cost_class=class_weight,
-                                   cost_mask=mask_weight,
-                                   cost_dice=dice_weight,
-                                   num_points=cfg.MODEL.SAN.TRAIN_NUM_POINTS)
+        # matcher = HungarianMatcher(cost_class=class_weight,
+        #                            cost_mask=mask_weight,
+        #                            cost_dice=dice_weight,
+        #                            num_points=cfg.MODEL.SAN.TRAIN_NUM_POINTS)
         weight_dict = {'loss_ce': class_weight,
                        'loss_mask': mask_weight,
                        'loss_dice': dice_weight}
@@ -84,14 +84,14 @@ class SAN(nn.Module):
         else:
             weight_dict.update(aux_weight_dict)
             losses = ['labels']
-            criterion = SetCriterion(num_classes=cfg.MODEL.SAN.NUM_CLASSES,
-                                     matcher=matcher,
-                                     weight_dict=weight_dict,
-                                     eos_coef=no_object_weight,
-                                     losses=losses,
-                                     num_points=cfg.MODEL.SAN.TRAIN_NUM_POINTS,
-                                     oversample_ratio=cfg.MODEL.SAN.OVERSAMPLE_RATIO,
-                                     importance_sample_ratio=cfg.MODEL.SAN.IMPORTANCE_SAMPLE_RATIO)
+            # criterion = SetCriterion(num_classes=cfg.MODEL.SAN.NUM_CLASSES,
+            #                          matcher=matcher,
+            #                          weight_dict=weight_dict,
+            #                          eos_coef=no_object_weight,
+            #                          losses=losses,
+            #                          num_points=cfg.MODEL.SAN.TRAIN_NUM_POINTS,
+            #                          oversample_ratio=cfg.MODEL.SAN.OVERSAMPLE_RATIO,
+            #                          importance_sample_ratio=cfg.MODEL.SAN.IMPORTANCE_SAMPLE_RATIO)
             model, _, preprocess = open_clip.create_model_and_transforms(cfg.MODEL.SAN.CLIP_MODEL_NAME,
                                                                          pretrained=cfg.MODEL.SAN.CLIP_PRETRAINED_NAME)
             ov_classifier = LearnableBgOvClassifier(model,
@@ -171,7 +171,7 @@ class SAN(nn.Module):
                     'side_adapter_network': build_side_adapter_network(cfg, clip_visual_extractor.output_shapes),
                     'ov_classifier': ov_classifier,
                     'caption_embedder': caption_embedder,
-                    'criterion': criterion,
+                    # 'criterion': criterion,
                     'size_divisibility': cfg.MODEL.SAN.SIZE_DIVISIBILITY,
                     'asymetric_input': cfg.MODEL.SAN.ASYMETRIC_INPUT,
                     'clip_resolution': cfg.MODEL.SAN.CLIP_RESOLUTION,

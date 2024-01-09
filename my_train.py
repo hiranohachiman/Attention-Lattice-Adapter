@@ -469,6 +469,7 @@ def main(args):
     cfg = setup(args)
     model = SAN(**SAN.from_config(cfg))
     summary(model, input_size=(8,3,384,384))
+    print(model)
     # if args.eval_only:
     #     model = Trainer.build_model(cfg)
     #     DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
