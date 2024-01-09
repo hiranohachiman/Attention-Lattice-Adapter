@@ -180,7 +180,7 @@ class SAN(nn.Module):
                     'pixel_std': pixel_std}
 
     def forward(self, images):
-        images = [torch.tensor(x).to(self.device) for x in images]
+        images = [x.to(self.device) for x in images]
         # captions = [x for x in captions]
         # embedded_caption = self.caption_embedder(captions)
         # print(embedded_caption.shape) # [8, 512]

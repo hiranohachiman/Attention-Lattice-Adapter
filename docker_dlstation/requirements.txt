@@ -1,0 +1,8 @@
+huggingface_hub
+timm
+open-clip-torch==2.16.0
+loralib
+info_nce_pytorch
+torchinfo
+wandb
+torchsummary
