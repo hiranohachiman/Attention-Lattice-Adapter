@@ -7,6 +7,7 @@ asttokens==2.4.0
 backcall==0.2.0
 black==21.4b2
 cachetools==5.3.1
+captum==0.7.0
 certifi==2023.7.22
 charset-normalizer==3.2.0
 click==8.1.7
@@ -34,7 +35,7 @@ google-api-core==2.14.0
 google-api-python-client==2.108.0
 google-auth==2.23.4
 google-auth-httplib2==0.1.1
-google-auth-oauthlib==1.1.0
+google-auth-oauthlib==1.0.0
 googleapis-common-protos==1.61.0
 grpcio==1.58.0
 h11==0.14.0
