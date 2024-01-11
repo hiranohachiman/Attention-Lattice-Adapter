@@ -59,3 +59,4 @@ datasets/prepair_cub/chatgpt_api.py
 
 wandb
 amlt
+dump/

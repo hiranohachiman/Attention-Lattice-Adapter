@@ -13,11 +13,13 @@ except:
     pass
 import os
 
-from captum.attr import LayerLRP, IntegratedGradients, GuidedBackprop, LayerGradCam
+from captum.attr import LRP, IntegratedGradients, GuidedBackprop, GuidedGradCam
 
 import huggingface_hub
 import torch
 import numpy as np
+from torchinfo import summary
+
 import torch.nn.functional as F
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
@@ -87,7 +89,7 @@ def setup(config_file: str, device=None):
 
 def my_load_model(config_file: str, model_path: str):
     cfg = setup(config_file)
-    model = SAN(**SAN.from_config(cfg))
+    # model = SAN(**SAN.from_config(cfg))
     print('Loading model from: ', model_path)
     model = torch.load(model_path)
     print('Loaded model from: ', model_path)
@@ -166,11 +168,42 @@ def predict_one_shot(model, image_path, output_path, device="cuda"):
 
 def lrp(model, image, output_path, device="cuda"):
     model = model.to(device)
-    model.eval()
     image = image.to(device)
-    lrp = IntegratedGradients(model)
+    lrp = LRP(model)
     attribution = lrp.attribute(image, target=3)
-    print(attribution.shape)
+    print("attribution.shape", attribution.shape)
+
+
+def ig(model, image, output_path, device="cuda"):
+    model = model.to(device)
+    image = image.to(device)
+    ig = IntegratedGradients(model.forward)
+    attribution = ig.attribute(image, target=3, n_steps=5)
+    print("attribution.shape", attribution.shape)
+
+
+def gradient_backprop(model, image, output_path, device="cuda"):
+    model = model.to(device)
+    image = image.to(device)
+    guided_backprop = GuidedBackprop(model)
+    attribution = guided_backprop.attribute(image, target=3)
+    print("attribution.shape", attribution.shape)
+
+
+def guided_grad_cam(model, image, output_path, device="cuda"):
+    model = model.to(device)
+    image = image.to(device)
+    guided_grad_cam = GuidedGradCam(model, model)
+    attribution = guided_grad_cam.attribute(image, target=3)
+    print("attribution.shape", attribution.shape)
+
+
+def set_gradient_true(model):
+    for param in model.parameters():
+        param.requires_grad = True
+    return model
+
+
 
 
 def main(args):
@@ -178,6 +211,7 @@ def main(args):
     assert len(model_paths) == 1
     model_path = os.path.join(args.model_dir, model_paths[0])
     model = my_load_model(config_file, model_path)
+
     image_path = "datasets/CUB/extracted_test/001.Black_footed_Albatross_Black_Footed_Albatross_0001_796111.jpg"
     img = cv2.imread(image_path)
     img = img[:, :, ::-1] # BGR to RGB.
@@ -186,10 +220,13 @@ def main(args):
     transform = _make_transform(istrain=False)
     img = transform(img)
     img = img.unsqueeze(0)
-    for name, module in model.named_modules():
-        print(f"{name}: {module}")
-    lrp(model, img, args.output_dir)
-
+    model = model.eval()
+    model = set_gradient_true(model)
+    summary(model, input_size=(1,3,384,384))
+    # lrp(model, img, args.output_dir)
+    # ig(model, img, args.output_dir)
+    # gradient_backprop(model, img, args.output_dir)
+    guided_grad_cam(model, img, args.output_dir)
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
@@ -209,3 +246,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     main(args)
+
+# for test
+# python visualize_several_methods.py --method_name LRP --model_dir output/test --output_dir output/test/test
