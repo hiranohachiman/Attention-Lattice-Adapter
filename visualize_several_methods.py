@@ -191,8 +191,6 @@ def gradient_backprop(model, image, output_path, device="cuda"):
     print("attribution.shape", attribution.shape)
 
 
-
-
 def score_cam(model, image, output_path, device="cuda"):
     model = model.to(device)
     image = image.to(device)
@@ -214,7 +212,6 @@ def set_gradient_true(model):
 
 
 
-
 def main(args):
     model_paths = [file for file in os.listdir(args.model_dir) if 'epoch_' in file]
     assert len(model_paths) == 1
@@ -222,22 +219,30 @@ def main(args):
     model = my_load_model(config_file, model_path)
 
     image_path = "datasets/CUB/extracted_test/001.Black_footed_Albatross_Black_Footed_Albatross_0001_796111.jpg"
+    image_path2 = "datasets/CUB/extracted_test/001.Black_footed_Albatross_Black_Footed_Albatross_0001_796111.jpg"
     img = cv2.imread(image_path)
+    img2 = cv2.imread(image_path2)
     img = img[:, :, ::-1] # BGR to RGB.
+    img2 = img2[:, :, ::-1] # BGR to RGB.
     # to PIL.Image
     img = Image.fromarray(img)
+    img2 = Image.fromarray(img2)
     transform = _make_transform(istrain=False)
     img = transform(img)
+    img2 = transform(img2)
     img = img.unsqueeze(0)
+    img2 = img2.unsqueeze(0)
+    # img = torch.cat([img, img2], dim=0)
     model = model.eval()
     model = set_gradient_true(model)
-    summary(model, input_size=(1,3,384,384))
-    # lrp(model, img, args.output_dir)
-    # ig(model, img, args.output_dir)
-    # gradient_backprop(model, img, args.output_dir)
-    # guided_grad_cam(model, img, args.output_dir)
-    # score_cam(model, img, args.output_dir)
-    grad_cam(model, img, args.output_dir)
+    summary(model, input_size=(2,3,384,384))
+    # model = lrp(model, img, args.output_dir)
+    # lrp(model, img2, args.output_dir)
+    for i in range(3):
+        ig(model, img, args.output_dir)
+        gradient_backprop(model, img, args.output_dir)
+        score_cam(model, img, args.output_dir)
+        grad_cam(model, img, args.output_dir)
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
