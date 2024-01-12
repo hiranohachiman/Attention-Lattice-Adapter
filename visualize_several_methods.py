@@ -13,7 +13,8 @@ except:
     pass
 import os
 
-from captum.attr import LRP, IntegratedGradients, GuidedBackprop, GuidedGradCam
+from captum.attr import LRP, IntegratedGradients, GuidedBackprop
+from pytorch_grad_cam import GradCAM, ScoreCAM
 
 import huggingface_hub
 import torch
@@ -190,13 +191,21 @@ def gradient_backprop(model, image, output_path, device="cuda"):
     print("attribution.shape", attribution.shape)
 
 
-def guided_grad_cam(model, image, output_path, device="cuda"):
+
+
+def score_cam(model, image, output_path, device="cuda"):
     model = model.to(device)
     image = image.to(device)
-    guided_grad_cam = GuidedGradCam(model, model)
-    attribution = guided_grad_cam.attribute(image, target=3)
+    score_cam = ScoreCAM(model, target_layers=[model.clipfeatureclassifier.conv2])
+    attribution = score_cam(image, targets=None)
     print("attribution.shape", attribution.shape)
 
+def grad_cam(model, image, output_path, device="cuda"):
+    model = model.to(device)
+    image = image.to(device)
+    grad_cam = GradCAM(model, target_layers=[model.clipfeatureclassifier.conv2])
+    attribution = grad_cam(image, targets=None)
+    print("attribution.shape", attribution.shape)
 
 def set_gradient_true(model):
     for param in model.parameters():
@@ -226,7 +235,9 @@ def main(args):
     # lrp(model, img, args.output_dir)
     # ig(model, img, args.output_dir)
     # gradient_backprop(model, img, args.output_dir)
-    guided_grad_cam(model, img, args.output_dir)
+    # guided_grad_cam(model, img, args.output_dir)
+    # score_cam(model, img, args.output_dir)
+    grad_cam(model, img, args.output_dir)
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
