@@ -21,6 +21,8 @@ _ext
 build/
 dist/
 wheels/
+output/
+datasets/
 
 # pytorch/python/numpy formats
 *.pth
