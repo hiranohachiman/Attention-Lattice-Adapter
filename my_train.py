@@ -489,8 +489,8 @@ def main(args):
 
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
-    train_loader = DataLoader(image_net_train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
-    valid_loader = DataLoader(image_net_valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
+    valid_loader = DataLoader(valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     best_epoch = 0
     for epoch in range(num_epochs//2):

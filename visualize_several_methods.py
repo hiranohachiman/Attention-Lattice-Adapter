@@ -42,7 +42,6 @@ from san.model.san import SAN
 from LambdaAttentionBranchNetworks.metrics.patch_insdel import PatchInsertionDeletion
 from tqdm import tqdm
 
-
 model_cfg = {
     "san_vit_b_16": {
         "config_file": "configs/san_clip_vit_res4_coco.yaml",
@@ -59,38 +58,8 @@ config_file = "configs/san_clip_vit_res4_coco.yaml"
 # model_path = "output/2023-12-13-23:34:53/epoch_48.pth"
 # lora_path = "output/2023-12-13-23:34:53/lora_epoch_48.pth"
 
-def download_model(model_path: str):
-    """
-    Download the model from huggingface hub.
-    Args:
-        model_path (str): the model path
-    Returns:
-        str: the downloaded model path
-    """
-    if "HF_TOKEN" in os.environ:
-        huggingface_hub.login(token=os.environ["HF_TOKEN"])
-    model_path = model_path.split(":")[1]
-    model_path = hf_hub_download("Mendel192/san", filename=model_path)
-    return model_path
-
-
-def setup(config_file: str, device=None):
-    """
-    Create configs and perform basic setups.
-    """
-    cfg = get_cfg()
-    # for poly lr schedule
-    add_deeplab_config(cfg)
-    add_san_config(cfg)
-    cfg.merge_from_file(config_file)
-    cfg.MODEL.DEVICE = device or "cuda" if torch.cuda.is_available() else "cpu"
-    cfg.freeze()
-    return cfg
-
 
 def my_load_model(config_file: str, model_path: str):
-    cfg = setup(config_file)
-    # model = SAN(**SAN.from_config(cfg))
     print('Loading model from: ', model_path)
     model = torch.load(model_path)
     print('Loaded model from: ', model_path)
@@ -138,7 +107,7 @@ def save_attn_map(attn_map, path):
     # PyTorch TensorをNumPy配列に変換
     attn_map = attn_map.cpu().detach().numpy()
     # attn_mapを0から1の範囲に正規化
-    # attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
     # 値を0から255の範囲にスケーリング
     attn_map = attn_map * 255
     # 整数型にキャスト
@@ -147,7 +116,6 @@ def save_attn_map(attn_map, path):
     attn_map = Image.fromarray(attn_map)
     # 画像を保存
     attn_map.save(path)
-
 
 def predict_one_shot(model, image_path, output_path, device="cuda"):
     model = model.to(device)
@@ -160,50 +128,60 @@ def predict_one_shot(model, image_path, output_path, device="cuda"):
     transform = _make_transform(istrain=False)
     img = transform(img)
     img = img.unsqueeze(0)
-    logits, _, attn_map = model(img)
+    img = img.to(device)
+    with torch.no_grad():
+        logits, _, attn_map = model(img)
     # save attn_map
-    save_attn_map(attn_map, os.path.join(output_path, f"{os.path.basename(image_path)}_attn_map.png"))
+    # save_attn_map(attn_map, os.path.join(output_path, f"{os.path.basename(image_path)}_attn_map.png"))
     _, predicted = torch.max(logits.data, 1)
     return predicted
 
 
-def lrp(model, image, output_path, device="cuda"):
+def lrp(model, image, label, output_path, device="cuda"):
     model = model.to(device)
     image = image.to(device)
     lrp = LRP(model)
-    attribution = lrp.attribute(image, target=3)
-    print("attribution.shape", attribution.shape)
+    attribution = lrp.attribute(image, target=label)
+    print("lrp.shape", attribution.shape)
 
 
-def ig(model, image, output_path, device="cuda"):
+def ig(model, image, label, output_path, device="cuda"):
     model = model.to(device)
     image = image.to(device)
     ig = IntegratedGradients(model.forward)
-    attribution = ig.attribute(image, target=3, n_steps=5)
-    print("attribution.shape", attribution.shape)
+    attribution = ig.attribute(image, target=label, n_steps=5)
+    attribution = attribution.mean(dim=1)
+    # print("ig.shape", attribution.shape) # [1, 384, 384]
+    return attribution
 
 
-def gradient_backprop(model, image, output_path, device="cuda"):
+def gradient_backprop(model, image, label, output_path, device="cuda"):
     model = model.to(device)
     image = image.to(device)
     guided_backprop = GuidedBackprop(model)
-    attribution = guided_backprop.attribute(image, target=3)
-    print("attribution.shape", attribution.shape)
+    attribution = guided_backprop.attribute(image, target=label)
+    attribution = attribution.mean(dim=1)
+    # print("gradient_backprop.shape", attribution.shape) [1, 384, 384]
+    return attribution
 
 
-def score_cam(model, image, output_path, device="cuda"):
+def score_cam(model, image, label, output_path, device="cuda"):
     model = model.to(device)
     image = image.to(device)
     score_cam = ScoreCAM(model, target_layers=[model.clipfeatureclassifier.conv2])
     attribution = score_cam(image, targets=None)
-    print("attribution.shape", attribution.shape)
+    # print("score_cam.shape", attribution.shape) (1, 384, 384)
+    attribution = torch.tensor(attribution)
+    return attribution
 
-def grad_cam(model, image, output_path, device="cuda"):
+def grad_cam(model, image, label, output_path, device="cuda"):
     model = model.to(device)
     image = image.to(device)
     grad_cam = GradCAM(model, target_layers=[model.clipfeatureclassifier.conv2])
     attribution = grad_cam(image, targets=None)
-    print("attribution.shape", attribution.shape)
+    # print("grad_cam.shape", attribution.shape) (1, 384, 384)
+    attribution = torch.tensor(attribution)
+    return attribution
 
 def set_gradient_true(model):
     for param in model.parameters():
@@ -211,38 +189,73 @@ def set_gradient_true(model):
     return model
 
 
+def get_id_scorerer(model):
+    metrics = PatchInsertionDeletion(
+        model=model,
+        batch_size=8,
+        patch_size=1,
+        step=3072,
+        dataset="str",
+        device="cuda",)
+    return metrics
+
 
 def main(args):
     model_paths = [file for file in os.listdir(args.model_dir) if 'epoch_' in file]
     assert len(model_paths) == 1
     model_path = os.path.join(args.model_dir, model_paths[0])
     model = my_load_model(config_file, model_path)
+    with open(label_file) as (f):
+        lines = f.readlines()
+        for line in tqdm(lines):
+            img_path, _, _, _ = get_image_data_details(line, args)
+            with torch.no_grad():
+                label = predict_one_shot(model, img_path, args.output_dir)
+            img = cv2.imread(img_path)
+            img = img[:, :, ::-1] # BGR to RGB.
+            # to PIL.Image
+            img = Image.fromarray(img)
+            transform = _make_transform(istrain=False)
+            img = transform(img)
+            img = img.unsqueeze(0)
+            model = model.eval()
+            model = set_gradient_true(model)
+            # lrp(model, img2, args.output_dir)
+            # attention maps
+            ig_attn = ig(model, img, label, args.output_dir)
+            gradient_backprop_attn = gradient_backprop(model, img, label, args.output_dir)
+            score_cam_attn = score_cam(model, img, label, args.output_dir)
+            grad_cam_attn = grad_cam(model, img, label, args.output_dir)
+            single_image = img.squeeze(0).cpu().numpy()
 
-    image_path = "datasets/CUB/extracted_test/001.Black_footed_Albatross_Black_Footed_Albatross_0001_796111.jpg"
-    image_path2 = "datasets/CUB/extracted_test/001.Black_footed_Albatross_Black_Footed_Albatross_0001_796111.jpg"
-    img = cv2.imread(image_path)
-    img2 = cv2.imread(image_path2)
-    img = img[:, :, ::-1] # BGR to RGB.
-    img2 = img2[:, :, ::-1] # BGR to RGB.
-    # to PIL.Image
-    img = Image.fromarray(img)
-    img2 = Image.fromarray(img2)
-    transform = _make_transform(istrain=False)
-    img = transform(img)
-    img2 = transform(img2)
-    img = img.unsqueeze(0)
-    img2 = img2.unsqueeze(0)
-    # img = torch.cat([img, img2], dim=0)
-    model = model.eval()
-    model = set_gradient_true(model)
-    summary(model, input_size=(2,3,384,384))
-    # model = lrp(model, img, args.output_dir)
-    # lrp(model, img2, args.output_dir)
-    for i in range(3):
-        ig(model, img, args.output_dir)
-        gradient_backprop(model, img, args.output_dir)
-        score_cam(model, img, args.output_dir)
-        grad_cam(model, img, args.output_dir)
+            # scorerers
+            ig_scorerer = get_id_scorerer(model)
+            gradient_backprop_scorerer = get_id_scorerer(model)
+            score_cam_scorerer = get_id_scorerer(model)
+            grad_cam_scorerer = get_id_scorerer(model)
+
+            # evaluate
+            ig_scorerer.evaluate(single_image, ig_attn.cpu().numpy(), label)
+            gradient_backprop_scorerer.evaluate(single_image, gradient_backprop_attn.cpu().numpy(), label)
+            score_cam_scorerer.evaluate(single_image, score_cam_attn.cpu().numpy(), label)
+            grad_cam_scorerer.evaluate(single_image, grad_cam_attn.cpu().numpy(), label)
+
+            # save roc curve
+            ig_scorerer.save_roc_curve(args.output_dir)
+            gradient_backprop_scorerer.save_roc_curve(args.output_dir)
+            score_cam_scorerer.save_roc_curve(args.output_dir)
+            grad_cam_scorerer.save_roc_curve(args.output_dir)
+
+            # save attn_map
+            save_attn_map(ig_attn.unsqueeze(0), os.path.join(os.path.join(args.output_dir, "ig_attn"),os.path.basename(img_path)))
+            save_attn_map(gradient_backprop_attn.unsqueeze(0), os.path.join(os.path.join(args.output_dir, "gradient_backprop_attn"),os.path.basename(img_path)))
+            save_attn_map(score_cam_attn.unsqueeze(0), os.path.join(os.path.join(args.output_dir, "score_cam_attn"),os.path.basename(img_path)))
+            save_attn_map(grad_cam_attn.unsqueeze(0), os.path.join(os.path.join(args.output_dir, "grad_cam_attn"),os.path.basename(img_path)))
+    print("ig:", "insertion:", ig_scorerer.total_insertion / len(lines), "deletion:", ig_scorerer.total_deletion / len(lines), "ins-del:", (ig_scorerer.total_insertion - ig_scorerer.total_deletion) / len(lines))
+    print("gradient_backprop:", "insertion:", gradient_backprop_scorerer.total_insertion / len(lines), "deletion:", gradient_backprop_scorerer.total_deletion / len(lines), "ins-del:", (gradient_backprop_scorerer.total_insertion - gradient_backprop_scorerer.total_deletion) / len(lines))
+    print("score_cam:", "insertion:", score_cam_scorerer.total_insertion / len(lines), "deletion:", score_cam_scorerer.total_deletion / len(lines), "ins-del:", (score_cam_scorerer.total_insertion - score_cam_scorerer.total_deletion) / len(lines))
+    print("grad_cam:", "insertion:", grad_cam_scorerer.total_insertion / len(lines), "deletion:", grad_cam_scorerer.total_deletion / len(lines), "ins-del:", (grad_cam_scorerer.total_insertion - grad_cam_scorerer.total_deletion) / len(lines))
+
 
 if __name__ == "__main__":
     from argparse import ArgumentParser

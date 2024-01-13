@@ -180,14 +180,15 @@ class SAN(nn.Module):
                     'pixel_std': pixel_std}
 
     def forward(self, images):
-        images = [torch.tensor(x).to(self.device) for x in images]
+        images = [x for x in images]
+        images = torch.stack(images)
         # captions = [x for x in captions]
         # embedded_caption = self.caption_embedder(captions)
         # print(embedded_caption.shape) # [8, 512]
         # embedded_caption = self.linear(embedded_caption)
         # images = [(x - self.pixel_mean) / self.pixel_std for x in images]
-        images = ImageList.from_tensors(images, self.size_divisibility)
-        clip_input = images.tensor
+        # images = ImageList.from_tensors(images, self.size_divisibility)
+        clip_input = images
         # print(clip_input.shape) # [8, 3, 640, 640]
 
         # if self.asymetric_input:
@@ -195,7 +196,7 @@ class SAN(nn.Module):
         # print(clip_input.shape) # [8, 3, 320, 320]
         clip_image_features = self.clip_visual_extractor(clip_input)
         # [8, 768, 20, 20], [1, 8, 768]
-        mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
+        mask_preds, attn_biases = self.side_adapter_network(images, clip_image_features)
         mask_preds = mask_preds[-1]
         if self.with_mask:
             reshaped_mask_preds = self.conv1(mask_preds)

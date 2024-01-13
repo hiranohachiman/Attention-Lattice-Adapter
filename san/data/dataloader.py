@@ -105,6 +105,55 @@ class CUBDataset(Dataset):
         return transform_for_mask
 
 
+def _make_transform_for_mask(istrain: bool):
+    normalize = transforms.Normalize(
+            mean=[0.5],
+            std=[0.5]
+        )
+    if istrain:
+        transform_for_mask = transforms.Compose([
+                        transforms.Grayscale(num_output_channels=1),  # カラー画像をグレースケールに変換
+                        transforms.Resize((510, 510), Image.BILINEAR),
+                        transforms.RandomCrop((384, 384)),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
+                        transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
+                        transforms.ToTensor()
+                    ])
+    else:
+        transform_for_mask = transforms.Compose([
+                                transforms.Grayscale(num_output_channels=1),  # カラー画像をグレースケールに変換
+                                transforms.Resize((384, 384), Image.BILINEAR),
+                                # transforms.CenterCrop((384, 384)),
+                                transforms.ToTensor()
+                            ])
+    return transform_for_mask
+
+
+def _make_transform(istrain: bool):
+    normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
+    if istrain:
+        transform = transforms.Compose([
+                            transforms.Resize((510, 510), Image.BILINEAR),
+                            transforms.RandomCrop((384, 384)),
+                            transforms.RandomHorizontalFlip(),
+                            transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 5))], p=0.1),
+                            transforms.RandomAdjustSharpness(sharpness_factor=1.5, p=0.1),
+                            transforms.ToTensor(),
+                            normalize
+                    ])
+    else:
+        transform = transforms.Compose([
+                            transforms.Resize((384, 384), Image.BILINEAR),
+                            # transforms.CenterCrop((384, 384)),
+                            transforms.ToTensor(),
+                            normalize
+                    ])
+    return transform
+
 def _preprocess(image: Image.Image, color="RGB") -> torch.Tensor:
     """
     Preprocess the input image.
