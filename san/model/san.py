@@ -54,7 +54,7 @@ class SAN(nn.Module):
         # self.mask_embs_classifier = SimpleClassifier()
         # self.attention = nn.MultiheadAttention(768, 8)
         # self.transformer = TransformerDecoder(200)
-        self.linear5 = LinearLayer(200, 919)
+        self.linear5 = LinearLayer(200, 200)
         # self.linear6 = LinearLayer(512, 200)
         self.abnclassifier = ABNClassifier()
         self.clipfeatureclassifier = ClipFeatureClassifier()
@@ -118,13 +118,13 @@ class SAN(nn.Module):
                     setattr(parent, child_name, new_module)
             def integrate_lora_to_specific_layers(vit_model, rank=16):
                 layer_names = [
-                    "transformer.resblocks.9.ln_1",
-                    "transformer.resblocks.9.mlp.c_fc",
-                    "transformer.resblocks.9.mlp.c_proj",
-                    "transformer.resblocks.9.attn.in_proj_weight",
-                    "transformer.resblocks.9.attn.in_proj_bias",
-                    "transformer.resblocks.9.attn.out_proj",
-                    "transformer.resblocks.9.ln_2",
+                    # "transformer.resblocks.9.ln_1",
+                    # "transformer.resblocks.9.mlp.c_fc",
+                    # "transformer.resblocks.9.mlp.c_proj",
+                    # "transformer.resblocks.9.attn.in_proj_weight",
+                    # "transformer.resblocks.9.attn.in_proj_bias",
+                    # "transformer.resblocks.9.attn.out_proj",
+                    # "transformer.resblocks.9.ln_2",
                     # "transformer.resblocks.8.mlp.c_fc",
                     # "transformer.resblocks.8.mlp.c_proj",
                     # "transformer.resblocks.8.attn.in_proj_weight",
@@ -189,12 +189,12 @@ class SAN(nn.Module):
         images = ImageList.from_tensors(images, self.size_divisibility)
         clip_input = images.tensor
         # print(clip_input.shape) # [8, 3, 640, 640]
-
         # if self.asymetric_input:
         #     clip_input = F.interpolate(clip_input, scale_factor=self.clip_resolution, mode='bilinear')
         # print(clip_input.shape) # [8, 3, 320, 320]
         clip_image_features = self.clip_visual_extractor(clip_input)
         # [8, 768, 20, 20], [1, 8, 768]
+        cls_token = clip_image_features["9_cls_token"].squeeze(0)
         mask_preds, attn_biases = self.side_adapter_network(images.tensor, clip_image_features)
         mask_preds = mask_preds[-1]
         if self.with_mask:
@@ -211,7 +211,7 @@ class SAN(nn.Module):
         attn_class_preds = self.abnclassifier(mask_preds)
         # clip_image_feature = self.conv2(clip_image_features[9])
         clip_image_features[9] *= reshaped_mask_preds
-        logits = self.clipfeatureclassifier(clip_image_features[9])
+        logits = self.clipfeatureclassifier(clip_image_features[9], cls_token)
         logits = self.linear5(logits)
         return logits, attn_class_preds, reshaped_mask_preds
 

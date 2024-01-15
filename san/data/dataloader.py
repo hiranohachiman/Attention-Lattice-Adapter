@@ -180,6 +180,6 @@ class ImageNetSDataset(Dataset):
 image_net_train_dataset = ImageNetSDataset(path_label_file="datasets/ImageNetS919/train.txt", split="train")
 image_net_valid_dataset = ImageNetSDataset(path_label_file="datasets/ImageNetS919/valid.txt", split="valid")
 
-# train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB', split="train")
-# valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB', split="val")
-# test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB', split="test")
+train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB', split="train")
+valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB', split="val")
+test_dataset = CUBDataset(json_file='datasets/CUB/new_test_label.jsonl', root_dir='datasets/CUB', split="test")
