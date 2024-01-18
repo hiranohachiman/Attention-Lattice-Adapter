@@ -145,18 +145,18 @@ class ImageNetSDataset(Dataset):
         if self.split == "train":
             with open(path_label_file, 'r') as f:
                 self.img_paths_labels = f.readlines()
-                self.img_paths = [img_path.strip().split(",")[0].replace("S919", "") for img_path in self.img_paths_labels]
+                self.img_paths = [img_path.strip().split(",")[0] for img_path in self.img_paths_labels]
                 self.labels = [int(img_path.strip().split(",")[1]) - 1 for img_path in self.img_paths_labels]
 
         else:
             with open(path_label_file, 'r') as f:
                 self.img_paths_labels = f.readlines()
-                self.img_paths = [img_path.strip().split(",")[0].replace("S919", "") for img_path in self.img_paths_labels]
+                self.img_paths = [img_path.strip().split(",")[0] for img_path in self.img_paths_labels]
                 self.labels = [int(img_path.strip().split(",")[1]) - 1 for img_path in self.img_paths_labels]
                 self.seg_paths = [img_path.strip().split(",")[2].strip().replace("JPEG", "png") for img_path in self.img_paths_labels]
 
     def __len__(self):
-        return len(self.img_paths)
+        return len(self.img_paths) 
 
     def __getitem__(self, idx):
         if self.split == "train":
@@ -179,6 +179,7 @@ class ImageNetSDataset(Dataset):
 
 image_net_train_dataset = ImageNetSDataset(path_label_file="datasets/ImageNetS919/train.txt", split="train")
 image_net_valid_dataset = ImageNetSDataset(path_label_file="datasets/ImageNetS919/valid.txt", split="valid")
+image_net_test_dataset = ImageNetSDataset(path_label_file="datasets/ImageNetS919/test.txt", split="valid")
 
 # train_dataset = CUBDataset(json_file='datasets/CUB/new_train_label.jsonl', root_dir='datasets/CUB', split="train")
 # valid_dataset = CUBDataset(json_file='datasets/CUB/new_valid_label.jsonl', root_dir='datasets/CUB', split="val")

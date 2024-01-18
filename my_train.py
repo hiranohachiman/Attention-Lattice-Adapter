@@ -22,7 +22,7 @@ from tqdm import tqdm
 import wandb
 import numpy as np
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from PIL import Image
 import random
 
@@ -55,7 +55,7 @@ from san import (
 from san.model.san import SAN
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
-from san.data.dataloader import image_net_train_dataset, image_net_valid_dataset ,_preprocess
+from san.data.dataloader import image_net_train_dataset, image_net_valid_dataset, image_net_test_dataset, _preprocess
 from torchinfo import summary
 import loralib as lora
 from scipy.ndimage import gaussian_filter
@@ -321,6 +321,24 @@ def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
     save_attn_map(torch.tensor(masks[0]).unsqueeze(0), "attn_gt_mask.png")
     return iou
 
+def while_black_loss(attn_maps):
+    total_loss = 0
+    for batch in attn_maps:
+        # バッチ内の平均値を計算
+        mean_value = batch.mean()
+
+        # 平均値以上および未満のピクセル数をカウント
+        x = (batch >= mean_value).sum().item()
+        y = (batch < mean_value).sum().item()
+
+        # 損失を計算（X^2 + Y^2）
+        loss = x**2 + y**2
+        total_loss += loss
+
+    return total_loss
+
+
+
 def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask=True, device="cuda"):
     model.train()
     model = model.to(device)
@@ -328,18 +346,23 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
     criterion = criterion.to(device)
     main_losses = []
     attn_losses = []
+    wb_losses = []
     for i, (images, _, captions, labels) in enumerate(tqdm(train_loader)):
         images = images.to(device)  # deviceは 'cuda' または 'cuda:0' など
         labels = labels.to(device)
-        logits, attn_class_preds, _ = model(images)
+        logits, attn_class_preds, attn_maps = model(images)
         main_loss = criterion(logits, labels)
         loss = main_loss
         avg_attn_loss = 0
         if with_mask:
             attn_loss = criterion(attn_class_preds, labels)
             attn_losses.append(attn_loss.item())
-            loss += attn_loss / 15
+            loss += attn_loss
             avg_attn_loss = sum(attn_losses) / len(attn_losses)
+            wb_loss = while_black_loss(attn_maps)
+            wb_losses.append(wb_loss)
+            loss += wb_loss
+
         main_losses.append(main_loss.item())
         # loss = main_loss + attn_loss / 15
         optimizer.zero_grad()
@@ -348,7 +371,7 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         avg_main_loss = sum(main_losses) / len(main_losses)
 
     if with_mask:
-        print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, avg_main_loss, optimizer.param_groups[0]['lr']))
+        print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, wb_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, sum(wb_losses) / len(wb_losses), avg_main_loss, optimizer.param_groups[0]['lr']))
     else:
         print('Epoch [{}/{}], main_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
     scheduler.step()
@@ -409,7 +432,7 @@ def predict_one_shot(model_path, image_path, caption, device="cuda"):
     return predicted
 
 class EarlyStopping():
-    def __init__(self, patience=10):
+    def __init__(self, patience=5):
         self.patience = patience
         self.best_loss = float('inf')
         self.best_epoch = None
@@ -489,21 +512,27 @@ def main(args):
 
     num_epochs = cfg.SOLVER.MAX_ITER
     early_stopper = EarlyStopping()
-    train_loader = DataLoader(image_net_train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
+
+    num_chunks = 10
+    chunk_size = len(image_net_train_dataset) // num_chunks
+    subsets = [Subset(image_net_train_dataset, range(i * chunk_size, (i + 1) * chunk_size)) for i in range(num_chunks)]
+
+    # train_loader = DataLoader(image_net_train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
     valid_loader = DataLoader(image_net_valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
-    # test_loader = DataLoader(test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
+    test_loader = DataLoader(image_net_test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
     best_epoch = 0
-    for epoch in range(num_epochs//2):
-        epoch = epoch * 2
-        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask=False)
-        # arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, with_mask=False, split="val")
-        # torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
-        # torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
-        # torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
-        model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch+1, num_epochs, with_mask=True)
-        arrucacy, loss, iou = eval(model, valid_loader, criterion,  cfg.OUTPUT_DIR, with_mask=True, split="val")
-        early_stop, best_epoch = early_stopper.early_stop(loss, epoch+1)
-        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch+1}.pth"))
+    for epoch in range(num_epochs):
+        for i, subset in enumerate(subsets):
+            train_loader = DataLoader(subset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
+            model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask=True)
+            # arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, with_mask=False, split="val")
+            # torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+            # torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
+            # torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
+            # model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch+1, num_epochs, with_mask=True)
+            arrucacy, loss, iou = eval(model, valid_loader, criterion,  cfg.OUTPUT_DIR, with_mask=True, split="val")
+            early_stop, best_epoch = early_stopper.early_stop(loss, epoch+1)
+            torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch+1}.pth"))
         if early_stop:
             print("early stopped...")
             break

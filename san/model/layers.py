@@ -255,42 +255,56 @@ class ClipFeatureClassifier(nn.Module):
     # def __init__(self, num_classes=200):
     #     super(ClipFeatureClassifier, self).__init__()
     #     self.conv1 = nn.Conv2d(768, 256, kernel_size=3, padding=1)
+    #     self.bn1 = nn.BatchNorm2d(256)
     #     self.conv2 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
+    #     self.bn2 = nn.BatchNorm2d(128)
     #     self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-    #     # 二つのプーリング層を通過した後のサイズを計算
-    #     self.flattened_size = 128 * 5 * 5
-    #     self.fc1 = nn.Linear(self.flattened_size, 1024)
-    #     self.fc2 = nn.Linear(1024, num_classes)
+    #     self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+    #     self.dropout = nn.Dropout(0.25)
+    #     self.fc1 = nn.Linear(128, 256)
+    #     self.fc2 = nn.Linear(256, num_classes)
 
-    # def forward(self, x):
-    #     x = self.pool(F.relu(self.conv1(x)))
-    #     x = self.pool(F.relu(self.conv2(x)))
+    # def forward(self, x, cls_token):
+    #     x = self.pool(F.relu(self.bn1(self.conv1(x))))
+    #     print("1", x.shape) # [b, 256, 12, 12]
+    #     x = self.pool(F.relu(self.bn2(self.conv2(x))))
+    #     print("2", x.shape) # [b, 128, 6, 6]
+    #     x = self.global_avg_pool(x)
+    #     print("3", x.shape) # [b, 128, 1, 1]
     #     x = torch.flatten(x, 1)
+    #     print("4", x.shape) # [b, 256]
+    #     x = self.dropout(x)128
+    #     print("5", x.shape) # [b, 128]
     #     x = F.relu(self.fc1(x))
+    #     print("6", x.shape) # [b, 256]
     #     x = self.fc2(x)
+    #     print("7", x.shape) # [b, 200]
     #     return x
+
     def __init__(self, num_classes=200):
         super(ClipFeatureClassifier, self).__init__()
-        self.conv1 = nn.Conv2d(768, 256, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(256)
-        self.conv2 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(128)
+        self.conv1 = nn.Conv2d(768, 2048, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(2048)
+        self.conv2 = nn.Conv2d(2048, 768, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(768)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.dropout = nn.Dropout(0.25)
-        self.fc1 = nn.Linear(128, 256)
+        self.fc1 = nn.Linear(1536, 256)
         self.fc2 = nn.Linear(256, num_classes)
 
-    def forward(self, x):
+    def forward(self, x, cls_token):
         x = self.pool(F.relu(self.bn1(self.conv1(x))))
-        x = self.pool(F.relu(self.bn2(self.conv2(x))))
+        x = self.pool2(F.relu(self.bn2(self.conv2(x))))
         x = self.global_avg_pool(x)
         x = torch.flatten(x, 1)
-        x = self.dropout(x)
+        x = torch.cat([x, cls_token], dim=1)
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
-
         return x
+
+
 
 class TensorTransformation(nn.Module):
     def __init__(self):

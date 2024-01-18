@@ -4,7 +4,7 @@ DATASETS:
   TRAIN: ("cub_train",)
   TEST: ('cub_val',)
 SOLVER:
-  IMS_PER_BATCH: 128
+  IMS_PER_BATCH: 64
   BASE_LR: 0.00005
   MAX_ITER: 120
   WARMUP_FACTOR: 1.0
