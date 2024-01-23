@@ -55,23 +55,31 @@ from san import (
 from san.model.san import SAN
 from san.data import build_detection_test_loader, build_detection_train_loader
 from san.utils import WandbWriter, setup_wandb
-from san.data.dataloader import image_net_train_dataset, image_net_valid_dataset, image_net_test_dataset, _preprocess
+from san.data.dataloader import (
+    image_net_train_dataset,
+    image_net_valid_dataset,
+    image_net_test_dataset,
+    _preprocess,
+)
 from torchinfo import summary
 import loralib as lora
 from scipy.ndimage import gaussian_filter
 
+
 def weight_init_kaiming(m):
     class_names = m.__class__.__name__
-    if class_names.find('Conv') != -1:
-        init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
-    elif class_names.find('Linear') != -1:
+    if class_names.find("Conv") != -1:
+        init.kaiming_normal_(m.weight.data, a=0, mode="fan_in")
+    elif class_names.find("Linear") != -1:
         init.kaiming_normal_(m.weight.data)
-        #init.constant_(m.bias.data, 0.0)
+        # init.constant_(m.bias.data, 0.0)
+
 
 def apply_weight_init(m):
     # モジュールが nn.Linear のインスタンスであるかどうかをチェックします。
     if isinstance(m, nn.Linear):
         weight_init_kaiming(m)
+
 
 class Trainer(DefaultTrainer):
     def build_writers(self):
@@ -264,6 +272,8 @@ class Trainer(DefaultTrainer):
         res = cls.test(cfg, model, evaluators)
         res = OrderedDict({k + "_TTA": v for k, v in res.items()})
         return res
+
+
 def save_attn_map(attn_map, path):
     # バッチの最初の要素を選択し、チャンネルの次元を削除
     attn_map = attn_map[0].squeeze()
@@ -280,6 +290,7 @@ def save_attn_map(attn_map, path):
     # 画像を保存
     attn_map.save(path)
 
+
 def normalize_batch(batch):
     # バッチごとにループ
     for i in range(batch.size(0)):
@@ -292,9 +303,12 @@ def normalize_batch(batch):
         batch[i] = (batch_i - min_val) / (max_val - min_val)
     return batch
 
+
 def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
-    preds = F.interpolate(preds, size=(384, 384), mode='bilinear', align_corners=False)
-    save_attn_map(preds[0], "attn_map.png") # This function call is commented out as it's not defined in this snippet.
+    preds = F.interpolate(preds, size=(384, 384), mode="bilinear", align_corners=False)
+    save_attn_map(
+        preds[0], "attn_map.png"
+    )  # This function call is commented out as it's not defined in this snippet.
     ious = []
     # Convert preds to numpy array
     preds = preds.squeeze(0).cpu().numpy()
@@ -321,6 +335,7 @@ def get_iou(preds, masks, threshold="mean", true_value=1, false_value=0):
     save_attn_map(torch.tensor(masks[0]).unsqueeze(0), "attn_gt_mask.png")
     return iou
 
+
 def while_black_loss(attn_maps):
     total_loss = 0
     for batch in attn_maps:
@@ -338,8 +353,17 @@ def while_black_loss(attn_maps):
     return total_loss
 
 
-
-def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask=True, device="cuda"):
+def my_train(
+    model,
+    train_loader,
+    optimizer,
+    scheduler,
+    criterion,
+    epoch,
+    num_epochs,
+    with_mask=True,
+    device="cuda",
+):
     model.train()
     model = model.to(device)
     model.with_mask = with_mask
@@ -359,9 +383,9 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
             attn_losses.append(attn_loss.item())
             loss += attn_loss
             avg_attn_loss = sum(attn_losses) / len(attn_losses)
-            wb_loss = while_black_loss(attn_maps)
-            wb_losses.append(wb_loss)
-            loss += wb_loss
+            # wb_loss = while_black_loss(attn_maps)
+            # wb_losses.append(wb_loss)
+            # loss += wb_loss
 
         main_losses.append(main_loss.item())
         # loss = main_loss + attn_loss / 15
@@ -371,14 +395,40 @@ def my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_ep
         avg_main_loss = sum(main_losses) / len(main_losses)
 
     if with_mask:
-        print('Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, wb_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_attn_loss, sum(wb_losses) / len(wb_losses), avg_main_loss, optimizer.param_groups[0]['lr']))
+        print(
+            "Epoch [{}/{}], main_loss:{:.3f}, attn_loss:{:.3f}, total_loss: {:.3f}, lr = {}".format(
+                epoch + 1,
+                num_epochs,
+                avg_main_loss,
+                avg_attn_loss,
+                avg_main_loss,
+                optimizer.param_groups[0]["lr"],
+            )
+        )
     else:
-        print('Epoch [{}/{}], main_loss:{:.3f}, total_loss: {:.3f}, lr = {}'.format(epoch + 1, num_epochs, avg_main_loss, avg_main_loss + avg_attn_loss, optimizer.param_groups[0]['lr']))
-    scheduler.step()
+        print(
+            "Epoch [{}/{}], main_loss:{:.3f}, total_loss: {:.3f}, lr = {}".format(
+                epoch + 1,
+                num_epochs,
+                avg_main_loss,
+                avg_main_loss + avg_attn_loss,
+                optimizer.param_groups[0]["lr"],
+            )
+        )
+    # scheduler.step()
     wandb.log({"main_loss": avg_main_loss, "attn_loss": avg_attn_loss})
     return model
 
-def eval(model, valid_loader, criterion, output_path, with_mask=True, split="val", device="cuda"):
+
+def eval(
+    model,
+    valid_loader,
+    criterion,
+    output_path,
+    with_mask=True,
+    split="val",
+    device="cuda",
+):
     model.eval()
     model = model.to(device)
     model.with_mask = with_mask
@@ -387,10 +437,12 @@ def eval(model, valid_loader, criterion, output_path, with_mask=True, split="val
     with torch.no_grad():
         total = 0
         correct = 0
-        for i, (images, masks, captions, labels, img_path) in enumerate(tqdm(valid_loader)):
+        for i, (images, masks, captions, labels, img_path) in enumerate(
+            tqdm(valid_loader)
+        ):
             images = images.to(device)
             labels = labels.to(device)
-            logits , attn_class_preds, attn_maps = model(images)
+            logits, attn_class_preds, attn_maps = model(images)
             logits += attn_class_preds
             ious.append(get_iou(attn_maps, masks))
             _, predicted = torch.max(logits.data, 1)
@@ -400,21 +452,42 @@ def eval(model, valid_loader, criterion, output_path, with_mask=True, split="val
             if split == "test":
                 os.makedirs(f"{output_path}/test_attn_maps", exist_ok=True)
                 for i, attn_map in enumerate(attn_maps):
-                    attn_map = F.interpolate(attn_map.unsqueeze(0), size=(384, 384), mode='bilinear', align_corners=False)
-                    save_attn_map(attn_map, f"{output_path}/test_attn_maps/{os.path.basename(img_path[i])}")
+                    attn_map = F.interpolate(
+                        attn_map.unsqueeze(0),
+                        size=(384, 384),
+                        mode="bilinear",
+                        align_corners=False,
+                    )
+                    save_attn_map(
+                        attn_map,
+                        f"{output_path}/test_attn_maps/{os.path.basename(img_path[i])}",
+                    )
         loss = sum(losses) / len(losses)
         accuracy = 100 * correct / total
         if with_mask:
             iou = sum(ious) / len(ious)
-            print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious) / len(ious)))
+            print(
+                "Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}".format(
+                    split, 100 * correct / total, loss, sum(ious) / len(ious)
+                )
+            )
         else:
-            print('Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}'.format(split, 100 * correct / total, loss, sum(ious)))
+            print(
+                "Accuracy of the model on the {} images: {:.3f} %, loss: {:.3f}, iou: {:.3f}".format(
+                    split, 100 * correct / total, loss, sum(ious)
+                )
+            )
         wandb.log({f"{split}_accuracy": accuracy, f"{split}_loss:": loss})
     return accuracy, loss, None
 
+
 def predict_one_shot(model_path, image_path, caption, device="cuda"):
-    model.load_state_dict(torch.load("output/2023-12-13-23:34:53/epoch_48.pth"), strict=False)
-    model.load_state_dict(torch.load("output/2023-12-13-23:34:53/lora_epoch_48.pth"), strict=False)
+    model.load_state_dict(
+        torch.load("output/2023-12-13-23:34:53/epoch_48.pth"), strict=False
+    )
+    model.load_state_dict(
+        torch.load("output/2023-12-13-23:34:53/lora_epoch_48.pth"), strict=False
+    )
     model = model.to(device)
     model.eval()
     image = Image.open(image_path)
@@ -431,10 +504,11 @@ def predict_one_shot(model_path, image_path, caption, device="cuda"):
     _, predicted = torch.max(logits.data, 1)
     return predicted
 
-class EarlyStopping():
+
+class EarlyStopping:
     def __init__(self, patience=5):
         self.patience = patience
-        self.best_loss = float('inf')
+        self.best_loss = float("inf")
         self.best_epoch = None
         self.no_improvement_count = 0
 
@@ -450,6 +524,7 @@ class EarlyStopping():
         else:
             return False, self.best_epoch
 
+
 def delete_non_best_epoch_weights(directory, best_epoch):
     """
     指定されたディレクトリから、'best epoch'ではないモデルの重みを削除します。
@@ -463,7 +538,7 @@ def delete_non_best_epoch_weights(directory, best_epoch):
             continue
 
         # ファイル名からエポック番号を抽出 (ファイル名の形式に合わせて調整が必要)
-        epoch_num = int(filename.split('_')[-1].split('.')[0])
+        epoch_num = int(filename.split("_")[-1].split(".")[0])
 
         # ベストエポック以外のファイルを削除
         if epoch_num != best_epoch:
@@ -491,7 +566,8 @@ def setup(args):
 def main(args):
     cfg = setup(args)
     model = SAN(**SAN.from_config(cfg))
-    summary(model, input_size=(8,3,384,384))
+    model = torch.load("output/2024-01-16-18:09:26/epoch_7.pth")
+    summary(model, input_size=(8, 3, 384, 384))
     # if args.eval_only:
     #     model = Trainer.build_model(cfg)
     #     DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
@@ -515,33 +591,68 @@ def main(args):
 
     num_chunks = 10
     chunk_size = len(image_net_train_dataset) // num_chunks
-    subsets = [Subset(image_net_train_dataset, range(i * chunk_size, (i + 1) * chunk_size)) for i in range(num_chunks)]
+    subsets = [
+        Subset(image_net_train_dataset, range(i * chunk_size, (i + 1) * chunk_size))
+        for i in range(num_chunks)
+    ]
 
     # train_loader = DataLoader(image_net_train_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
-    valid_loader = DataLoader(image_net_valid_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH , shuffle=True, num_workers=4)
-    test_loader = DataLoader(image_net_test_dataset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=False, num_workers=4)
+    valid_loader = DataLoader(
+        image_net_valid_dataset,
+        batch_size=cfg.SOLVER.IMS_PER_BATCH,
+        shuffle=True,
+        num_workers=4,
+    )
+    test_loader = DataLoader(
+        image_net_test_dataset,
+        batch_size=cfg.SOLVER.IMS_PER_BATCH,
+        shuffle=False,
+        num_workers=4,
+    )
     best_epoch = 0
     for epoch in range(num_epochs):
+        loss = 0
         for i, subset in enumerate(subsets):
-            train_loader = DataLoader(subset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4)
-            model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch, num_epochs, with_mask=True)
+            train_loader = DataLoader(
+                subset, batch_size=cfg.SOLVER.IMS_PER_BATCH, shuffle=True, num_workers=4
+            )
+            model = my_train(
+                model,
+                train_loader,
+                optimizer,
+                None,
+                criterion,
+                epoch,
+                num_epochs,
+                with_mask=True,
+            )
             # arrucacy, loss, iou = eval(model, valid_loader, criterion, cfg.OUTPUT_DIR, with_mask=False, split="val")
             # torch.save(model.state_dict(), os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
             # torch.save(lora.lora_state_dict(model), os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{epoch}.pth"))
             # torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch}.pth"))
             # model = my_train(model, train_loader, optimizer, scheduler, criterion, epoch+1, num_epochs, with_mask=True)
-            arrucacy, loss, iou = eval(model, valid_loader, criterion,  cfg.OUTPUT_DIR, with_mask=True, split="val")
-            early_stop, best_epoch = early_stopper.early_stop(loss, epoch+1)
-            torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch+1}.pth"))
+            arrucacy, loss, iou = eval(
+                model,
+                valid_loader,
+                criterion,
+                cfg.OUTPUT_DIR,
+                with_mask=True,
+                split="val",
+            )
+        early_stop, best_epoch = early_stopper.early_stop(loss, epoch + 1)
+        torch.save(model, os.path.join(cfg.OUTPUT_DIR, f"epoch_{epoch+1}.pth"))
         if early_stop:
             print("early stopped...")
             break
-    delete_non_best_epoch_weights(cfg.OUTPUT_DIR, best_epoch)
+    # delete_non_best_epoch_weights(cfg.OUTPUT_DIR, best_epoch)
     # model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth")), strict=False)
     # model.load_state_dict(torch.load(os.path.join(cfg.OUTPUT_DIR, f"lora_epoch_{best_epoch}.pth")), strict=False)
     model = torch.load(os.path.join(cfg.OUTPUT_DIR, f"epoch_{best_epoch}.pth"))
-    arrucacy, loss, iou = eval(model, test_loader, criterion, cfg.OUTPUT_DIR, True, split="test")
+    arrucacy, loss, iou = eval(
+        model, test_loader, criterion, cfg.OUTPUT_DIR, True, split="test"
+    )
     return
+
 
 def torch_fix_seed(seed=42):
     # Python random
@@ -553,6 +664,7 @@ def torch_fix_seed(seed=42):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.use_deterministic_algorithms = True
+
 
 if __name__ == "__main__":
     torch_fix_seed(seed=42)

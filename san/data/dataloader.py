@@ -156,7 +156,7 @@ class ImageNetSDataset(Dataset):
                 self.seg_paths = [img_path.strip().split(",")[2].strip().replace("JPEG", "png") for img_path in self.img_paths_labels]
 
     def __len__(self):
-        return len(self.img_paths) 
+        return len(self.img_paths)
 
     def __getitem__(self, idx):
         if self.split == "train":

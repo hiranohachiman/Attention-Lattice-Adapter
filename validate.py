@@ -7,11 +7,20 @@ from san.data.datasets.register_cub import CLASS_NAMES
 label_file = "datasets/CUB/valid_label.txt"
 config_file = "configs/san_clip_vit_res4_coco.yaml"
 
+
 def get_image_data_details(line):
-    img_path = line.split(',')[0]
-    label = int(line.split(',')[1].replace('\n', '').replace(' ', ''))
-    output_file = os.path.join(args.output_dir, img_path.replace("test/","",).replace("/","_").replace(" ",""))
-    img_path = os.path.join('datasets/CUB/', img_path.replace(' ', ''))
+    img_path = line.split(",")[0]
+    label = int(line.split(",")[1].replace("\n", "").replace(" ", ""))
+    output_file = os.path.join(
+        args.output_dir,
+        img_path.replace(
+            "test/",
+            "",
+        )
+        .replace("/", "_")
+        .replace(" ", ""),
+    )
+    img_path = os.path.join("datasets/CUB/", img_path.replace(" ", ""))
     return (img_path, label, output_file)
 
 
@@ -43,7 +52,7 @@ def main(args):
                     False,
                     output_file=output_file,
                     label=label,
-                    predict_class=True
+                    predict_class=True,
                 )
                 assert type(pred_class) == int
                 if pred_class == int(label):
@@ -58,7 +67,10 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument(
-        "--predict_mode", type=str, required=True, help="select from ['bird', 'name', 'class', 'none']"
+        "--predict_mode",
+        type=str,
+        required=True,
+        help="select from ['bird', 'name', 'class', 'none']",
     )
 
     parser.add_argument(
