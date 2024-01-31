@@ -143,7 +143,8 @@ def predict_one_shot(model, image_path, output_path, device="cuda"):
 
 def get_image_data_details(line, args):
     img_path = line.split(",")[0]
-    return img_path
+    label = int(line.split(",")[1]) - 1
+    return img_path, label
 
 
 def main(args):
@@ -169,17 +170,17 @@ def main(args):
     with open(label_file) as (f):
         lines = f.readlines()
         for line in tqdm(lines):
-            img_path = get_image_data_details(line, args)
+            img_path, gt = get_image_data_details(line, args)
             print(img_path)
             with torch.no_grad():
                 label = predict_one_shot(model, img_path, args.output_dir)
             single_image = Image.open(img_path)
             single_image = _preprocess(single_image)
-            single_target = label
+            single_target = torch.tensor(gt)
             single_attn_path = os.path.join(args.attn_dir, os.path.basename(img_path))
             single_attn = Image.open(single_attn_path)
             single_attn = _preprocess(single_attn, color="L")
-            single_attn = apply_heat_quantization(single_attn)
+            # single_attn = apply_heat_quantization(single_attn)
             single_image = single_image.cpu().numpy()
             single_attn = single_attn.cpu().numpy()
             metrics.evaluate(single_image, single_attn, single_target)

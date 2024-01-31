@@ -117,6 +117,7 @@ def get_attn_dir(args):
 def get_image_data_details(line, args):
     img_path = line.split(",")[0]
     label = int(line.split(",")[1].replace("\n", "").replace(" ", ""))
+    base_name = os.path.basename(img_path)
     output_file = os.path.join(
         args.output_dir,
         img_path.replace(
@@ -137,7 +138,7 @@ def get_image_data_details(line, args):
     )
     img_path = os.path.join("datasets/CUB/", img_path.replace(" ", ""))
 
-    return (img_path, label, attn_path, output_file)
+    return (img_path, label, base_name, output_file)
 
 
 def normalize_batch(batch):
@@ -188,10 +189,10 @@ def predict_one_shot(model, image_path, output_path, device="cuda"):
     img = img.unsqueeze(0)
     logits, _, attn_map = model(img)
     # save attn_map
-    save_attn_map(
-        attn_map,
-        os.path.join(output_path, f"{os.path.basename(image_path)}_attn_map.png"),
-    )
+    # save_attn_map(
+    #     attn_map,
+    #     os.path.join(output_path, f"{os.path.basename(image_path)}_attn_map.png"),
+    # )
     _, predicted = torch.max(logits.data, 1)
     return predicted
 
@@ -255,7 +256,7 @@ def main(args):
     with open(label_file) as (f):
         lines = f.readlines()
         for line in tqdm(lines):
-            img_path, _, _, _ = get_image_data_details(line, args)
+            img_path, _, attn_path, _ = get_image_data_details(line, args)
             with torch.no_grad():
                 label = predict_one_shot(model, img_path, args.output_dir)
             img = cv2.imread(img_path)
@@ -266,15 +267,13 @@ def main(args):
             single_target = label
 
             single_attn = cv2.imread(
-                os.path.join(
-                    args.output_dir, f"{os.path.basename(img_path)}_attn_map.png"
-                ),
+                os.path.join(args.attn_dir, os.path.basename(attn_path)),
                 cv2.IMREAD_GRAYSCALE,
             )
             single_attn = Image.fromarray(single_attn)
             transform_for_mask = _make_transform_for_mask(istrain=False)
             single_attn = transform_for_mask(single_attn).cpu().numpy()
-            single_attn = apply_heat_quantization(single_attn)
+            # single_attn = apply_heat_quantization(single_attn)
             metrics.evaluate(single_image, single_attn, single_target)
             metrics.save_roc_curve(args.output_dir)
 
@@ -284,8 +283,8 @@ def main(args):
                 print("total_deletion:", metrics.total_deletion)
                 print("average", (metrics.total_insertion - metrics.total_deletion) / x)
     print("!!!!!!!!!!!!!!!!!!!!!!!!")
-    print("total_insertion:", metrics.total_insertion)
-    print("total_deletion:", metrics.total_deletion)
+    print("total_insertion:", metrics.total_insertion / x)
+    print("total_deletion:", metrics.total_deletion / x)
     print("ins-del score:", metrics.total_insertion - metrics.total_deletion)
     print("average", (metrics.total_insertion - metrics.total_deletion) / x)
     print("!!!!!!!!!!!!!!!!!!!!!!!!")
@@ -305,6 +304,10 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--output_dir", type=str, default=None, help="path to output file."
+    )
+
+    parser.add_argument(
+        "--attn_dir", type=str, default=None, help="path to attention file."
     )
     args = parser.parse_args()
     main(args)

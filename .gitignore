@@ -21,8 +21,6 @@ _ext
 build/
 dist/
 wheels/
-output/
-datasets/
 dump/
 
 # pytorch/python/numpy formats
